@@ -5,6 +5,8 @@
 // 事前に db.php が読み込まれ $pdo / auth.php が利用可能であること。
 
 require_once __DIR__ . '/../core/view.php';
+require_once __DIR__ . '/rate_limit.php';
+require_once __DIR__ . '/totp.php';
 
 session_start();
 
@@ -16,17 +18,85 @@ if (($_GET['logout'] ?? '') === '1') {
     exit;
 }
 
-// ログイン処理
 $loginError = '';
+
+// ロック中メッセージ（試行回数制限）を組み立てる
+$lockMsg = function (int $until): string {
+    $mins = max(1, (int)ceil(($until - time()) / 60));
+    return "試行回数が上限に達しました。約{$mins}分後に再度お試しください。";
+};
+
+// 1段階目: パスワード認証
 if (($_POST['action'] ?? '') === 'login') {
-    $id   = $_POST['login_id'] ?? '';
-    $pass = $_POST['password'] ?? '';
-    if (verifyLogin($pdo, $id, $pass)) {
-        $_SESSION['admin'] = true;
+    $tkey = throttleKey();
+    if ($until = throttleLockedUntil($pdo, $tkey)) {
+        $loginError = $lockMsg($until);
     } else {
-        $loginError = 'ログインIDまたはパスワードが違います。';
+        $id   = $_POST['login_id'] ?? '';
+        $pass = $_POST['password'] ?? '';
+        if (verifyLogin($pdo, $id, $pass)) {
+            if (twofaEnabled($pdo)) {
+                $_SESSION['twofa_pending'] = 1;   // 2段階目待ち（まだ管理者にしない）
+            } else {
+                throttleReset($pdo, $tkey);
+                $_SESSION['admin'] = true;
+            }
+        } else {
+            throttleRegisterFail($pdo, $tkey);
+            $loginError = 'ログインIDまたはパスワードが違います。';
+        }
     }
 }
+
+// 2段階目: TOTP コード（またはリカバリコード）
+if (($_POST['action'] ?? '') === 'twofa' && !empty($_SESSION['twofa_pending'])) {
+    $tkey = throttleKey();
+    if ($until = throttleLockedUntil($pdo, $tkey)) {
+        $loginError = $lockMsg($until);
+    } else {
+        $code   = $_POST['code'] ?? '';
+        $secret = authGet($pdo, 'twofa_secret', '');
+        if (totp_verify($secret, $code) || twofa_consume_recovery($pdo, $code)) {
+            throttleReset($pdo, $tkey);
+            unset($_SESSION['twofa_pending']);
+            $_SESSION['admin'] = true;
+        } else {
+            throttleRegisterFail($pdo, $tkey);
+            $loginError = '認証コードが違います。';
+        }
+    }
+}
+
+// 2段階目をやめて最初のログインに戻る
+if (($_GET['cancel'] ?? '') === '1') {
+    unset($_SESSION['twofa_pending']);
+    header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
+    exit;
+}
+
+// 2段階目待ち: 認証コード入力画面を表示して終了
+if (empty($_SESSION['admin']) && !empty($_SESSION['twofa_pending'])):
+?>
+<?php page_head('2段階認証', '../'); ?>
+    <h1>2段階認証</h1>
+    <?php if ($loginError): ?><p class="error"><?= htmlspecialchars($loginError) ?></p><?php endif; ?>
+    <p class="hint">認証アプリに表示される<strong>6桁のコード</strong>を入力してください。</p>
+    <form method="post" class="reserve-form">
+      <input type="hidden" name="action" value="twofa">
+      <label>認証コード
+        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code"
+               autofocus required>
+      </label>
+      <button type="submit">認証</button>
+    </form>
+    <p class="auth-links">
+      認証アプリを使えない場合は<strong>リカバリコード</strong>も入力できます。
+      ／ <a href="?cancel=1">最初からやり直す</a>
+    </p>
+<?php page_foot(); ?>
+<?php
+    exit;
+endif;
 
 // 未ログインならログイン画面を表示して終了
 if (empty($_SESSION['admin'])):

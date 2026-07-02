@@ -202,3 +202,18 @@ select { padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-size:1r
 .admin-table { width: 100%; border-collapse: collapse; background:#fff; border-radius:12px; overflow:hidden; }
 .admin-table th, .admin-table td { padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: left; font-size:.9rem; }
 .admin-table th { background:#f1f5f9; }
+
+/* ===== 2段階認証（TOTP）設定 ===== */
+.sep { border: none; border-top: 1px solid #e5e7eb; margin: 28px 0; }
+.totp-steps { padding-left: 1.2em; line-height: 1.9; }
+.totp-secret { margin: 8px 0; }
+.totp-secret code {
+  display: inline-block; font-size: 1.2rem; letter-spacing: 2px;
+  background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 6px;
+  padding: 8px 12px; user-select: all;
+}
+.recovery-codes {
+  list-style: none; padding: 0; margin: 10px 0 0;
+  display: grid; grid-template-columns: repeat(2, max-content); gap: 6px 20px;
+}
+.recovery-codes code { font-size: 1.05rem; letter-spacing: 1px; }

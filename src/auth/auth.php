@@ -16,6 +16,15 @@ function ensureAdmin(PDO $pdo): void
         used       INTEGER NOT NULL DEFAULT 0
     )');
 
+    // ログイン試行回数の制限（ブルートフォース対策）用
+    $pdo->exec('CREATE TABLE IF NOT EXISTS login_throttle (
+        k            TEXT PRIMARY KEY,
+        fails        INTEGER NOT NULL DEFAULT 0,
+        first_at     INTEGER NOT NULL DEFAULT 0,
+        last_at      INTEGER NOT NULL DEFAULT 0,
+        locked_until INTEGER NOT NULL DEFAULT 0
+    )');
+
     // 既定は「ファイル主導」: ログインID/パスワード/メールは config.php を直接参照する。
     // 一度も管理画面でアカウントを変更していない状態。
     if (authGet($pdo, 'admin_pass_custom', '') === '') {
@@ -102,10 +111,12 @@ function setRecoveryEmail(PDO $pdo, string $email): void
     authSet($pdo, 'admin_recovery_email', trim($email));
 }
 
-/** ログイン情報を初期値（config.php）に戻す＝ファイル主導へ戻す */
+/** ログイン情報を初期値（config.php）に戻す＝ファイル主導へ戻す。2FAも解除（緊急復旧の抜け道）。 */
 function resetLoginToInitial(PDO $pdo): void
 {
     authSet($pdo, 'admin_pass_custom', '0');
+    // 端末/認証アプリを失っても FORCE_INITIAL_ADMIN で必ず入れるよう、2段階認証も無効化する
+    authSet($pdo, 'twofa_enabled', '0');
 }
 
 // ---- リセットトークン ----
