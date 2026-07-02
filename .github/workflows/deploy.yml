@@ -1,0 +1,104 @@
+name: Deploy to Onamae RS (lab.4510.be)
+
+# main への push で自動デプロイ。手動実行(workflow_dispatch)も可。
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-onamae
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      # サーバー固有情報はリポジトリに書かず GitHub Secrets から注入（公開リポジトリ／Actionsログへの漏洩防止）
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      # 管理画面を隠す秘密スラッグ（公開ソースには admin/ しか無い＝スラッグは Secret のみ）。
+      # 未設定なら従来通り /admin/（Basic認証）で公開する。
+      ADMIN_SLUG: ${{ secrets.ADMIN_SLUG }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vendor PHPMailer (fetch at deploy time)
+        run: bash scripts/fetch-phpmailer.sh
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      # 配置先フォルダを用意（サーバーのrsyncが古く --mkpath 非対応のため事前に作る）
+      - name: Ensure remote directories
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "mkdir -p ~/$DEPLOY_PATH/src ~/$DEPLOY_PATH/data"
+
+      # 公開ファイル(public/)をアプリ直下へ。src/ と data/ は消さない（本番DB保持）
+      - name: Sync public files
+        run: |
+          rsync -az --delete \
+            --exclude='/src/' --exclude='/data/' \
+            -e "ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT" \
+            public/ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+
+      # src/ を同期（PHPMailer含む）。data/ は対象外
+      - name: Sync src
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT" \
+            src/ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/src/"
+
+      # サーバ側の最終調整: 管理画面の秘密スラッグ移設 / .htaccess保護 / includeパス調整 / data権限
+      - name: Arrange on server
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" '
+            set -e
+            cd ~/'"$DEPLOY_PATH"'
+            mkdir -p data
+            printf "Require all denied\n" > src/.htaccess
+            printf "Require all denied\n" > data/.htaccess
+            chmod 755 data
+
+            # ===== 管理画面の隠蔽（偽装工作②） =====
+            # ADMIN_SLUG があれば admin/ を秘密スラッグへ移設し、/admin は素の 404 にする。
+            # 公開ソースには admin/ しか無いため、スラッグは Secret を知る者以外には分からない。
+            # rsync --delete により毎デプロイ admin/ が復活し前回スラッグは消えるので、ここで作り直す。
+            SLUG="'"$ADMIN_SLUG"'"
+            if [ -n "$SLUG" ]; then
+              # 安全確認: 予約語・記号を弾いて rm/mv の暴発を防ぐ
+              if ! printf "%s" "$SLUG" | grep -Eq "^[A-Za-z0-9][A-Za-z0-9._-]*$"; then
+                echo "FATAL: ADMIN_SLUG has invalid characters"; exit 1; fi
+              case "$SLUG" in
+                src|data|admin|assets|api|index.php|wp-admin|administrator|phpmyadmin)
+                  echo "FATAL: ADMIN_SLUG is a reserved name"; exit 1;; esac
+              rm -rf "./$SLUG"                     # 前回スラッグの残骸を掃除
+              mv admin "./$SLUG"                   # 本物を秘密スラッグへ
+              ADMIN_DIR="$SLUG"
+              echo "admin relocated to secret slug"
+            else
+              ADMIN_DIR="admin"
+              echo "ADMIN_SLUG unset -> admin stays at /admin/ (Basic auth only)"
+            fi
+
+            # 管理画面に Basic 認証をかける。宣言(.htaccess)はデプロイ毎に再生成し、
+            # 資格情報(.htpasswd)は data/ に別途手動設置（rsync対象外なので保持される）。
+            # AuthUserFile は絶対パスが必要だが、公開リポジトリに書かないためここで $PWD から生成する。
+            printf "AuthType Basic\nAuthName \"Clinic Admin (staff only)\"\nAuthUserFile $PWD/data/.htpasswd\nRequire valid-user\n" > "$ADMIN_DIR/.htaccess"
+            # Apache は group www で動作するため .htpasswd は 644 でないと読めず 500 になる
+            [ -f data/.htpasswd ] && chmod 644 data/.htpasswd || echo "WARN: data/.htpasswd missing - admin will 500 until created (see docs)"
+
+            # includeパス調整: ローカルは public/ がサブ階層だが、サーバは public 直下が docroot。
+            # 全 .php（src/ 配下を除く）の "/../src/" を "/src/" に正規化する。
+            #   docroot直下 index.php 等: __DIR__/../src   → __DIR__/src
+            #   管理ページ(admin/ or slug/): __DIR__/../../src → __DIR__/../src
+            find . -name "*.php" -not -path "./src/*" -print0 | xargs -0 -r sed -i "s#/\.\./src/#/src/#g"
+            echo "deploy arranged at ~/'"$DEPLOY_PATH"' (admin dir: $ADMIN_DIR)"
+          '
