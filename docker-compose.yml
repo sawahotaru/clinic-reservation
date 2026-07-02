@@ -1,0 +1,19 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        # .env の PHP_VERSION を使う（未指定なら 8.4）
+        PHP_VERSION: ${PHP_VERSION:-8.4}
+    ports:
+      - "${HOST_PORT:-8501}:80"
+    volumes:
+      # ソースをマウント（編集が即反映される）
+      - ./public:/var/www/html/public
+      - ./src:/var/www/html/src
+      # DBの実体を永続化（コンテナを消してもデータは残る）
+      - ./data:/var/www/html/data
+    # お店の設定（店名・メール・管理パスワード）は src/config.php で行う。
+    # この .env / docker-compose は Docker の起動設定（ポート・PHPバージョン）専用。
+    restart: unless-stopped

@@ -1,0 +1,14 @@
+# ハニーポット: 非PHPの機微ファイル探索を罠(hp.php)へ誘導する。
+# mod_rewrite が無い環境では丸ごと無視される（アプリ動作には影響しない）。
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # /.env, /config/.env などの環境変数ファイル探索
+  RewriteRule (^|/)\.env$              hp.php?l=env [NC,L]
+
+  # /.git/config などのリポジトリ丸取り探索
+  RewriteRule (^|/)\.git(/|$)          hp.php?l=git [NC,L]
+
+  # /.aws/credentials 等のクラウド鍵探索
+  RewriteRule (^|/)\.(aws|ssh)(/|$)    hp.php?l=file [NC,L]
+</IfModule>

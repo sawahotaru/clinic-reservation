@@ -1,0 +1,25 @@
+# メール送信ログ・ハニーポットのアクセスログ（ローカル/本番のランタイム生成物）
+data/*.log
+
+# ハニーポットの自動ブロック状態（IP別・環境固有。コミットしない）
+data/honeypot_deny.json
+
+# SQLiteのDB実体（データはコミットしない）
+data/*.sqlite
+data/*.sqlite-journal
+data/*.sqlite-wal
+data/*.sqlite-shm
+
+# 環境ごとの設定（パスワード等を含むためコミットしない）
+.env
+
+# 鍵・認証情報（絶対にコミットしない）
+*.pem
+*.key
+id_rsa
+id_ed25519
+.htpasswd
+
+# 外部ライブラリ（コミットせず、デプロイ時/初回セットアップ時に取得）
+# 取得: bash scripts/fetch-phpmailer.sh
+src/mail/lib/
