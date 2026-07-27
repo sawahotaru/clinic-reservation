@@ -1,5 +1,12 @@
 name: Deploy to Onamae RS (lab.4510.be)
 
+# ⚠️ 旧経路・停止中（2026-07-25〜 state=disabled_manually）
+#   lab.4510.be の本番は Oracle VM（oracle-lab）へ移行済み。現行の反映経路は
+#   deploy-notify.yml → oracle-lab の repository_dispatch。
+#   このワークフローは「onamae レンタルサーバーへの切り戻し」用に温存している。
+#   再有効化: gh api -X PUT repos/sawahotaru/clinic-reservation/actions/workflows/303505025/enable
+#   （GitHub 側で無効化されているため、下の on: push が書かれていても発火しない）
+
 # main への push で自動デプロイ。手動実行(workflow_dispatch)も可。
 on:
   push:
