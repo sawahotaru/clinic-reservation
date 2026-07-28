@@ -25,12 +25,15 @@
 
 ## ✨ 主な機能
 
-- 📅 **空き枠予約** — 営業時間から自動生成した枠を表示し、希望枠を選んで予約
+- 📅 **公開予約カレンダー** — 月表示のカレンダーで **空きあり / 空きなし / 休診** が一目で分かり、日付を選ぶとその日の空き枠が出ます（空き状況は JSON API `public/api/availability.php` から取得）
+- 🗓 **空き枠予約** — 営業時間・枠の長さ・定休日・休憩・祝日の設定から枠を**毎回計算して**生成（枠自体はDBに持たない）
+- 🚫 **休業・枠ふさぎ** — 特定日の終日休業／例外営業、開いている日の中の1枠だけふさぐ、を管理カレンダーから操作
 - 🔒 **二重予約防止** — DBの `UNIQUE(date,time)` 制約で同一日時の重複を自動拒否
 - 🧾 **予約完了の控え** — 予約番号付きの完了画面（スクショ控え想定）
 - ✉️ **通知メール** — 予約時にお客さま控え＋お店通知を自動送信。送信方法は **「サーバー標準（mail）」/「Gmail（SMTP）」** から選択
 - 🛠 **管理画面** — 予約一覧・キャンセル、各種設定、テスト送信
 - 🔑 **管理ログイン** — ID（メール）＋パスワード。**パスワード再設定 / ログイン情報リセット**（メールのワンタイムリンク・1時間有効・単回）。初期パスワードのままだと**警告バナー**で設定を促す
+- 🛡 **多層防御** — ログイン試行回数の制限、**2段階認証（TOTP・任意）**、デコイページ（後述）。いずれも**純PHP・追加ライブラリ不要**でレンタルサーバーでも動きます
 
 ---
 
@@ -51,24 +54,36 @@
 ```
 clinic-reservation/
 ├─ public/                 # 公開フォルダ（Webルート）
-│  ├─ index.php            #   トップ：日付選択→空き枠表示
+│  ├─ index.php            #   トップ：予約カレンダー→空き枠表示
 │  ├─ reserve.php          #   予約フォーム＆保存
 │  ├─ complete.php         #   予約完了
-│  ├─ assets/style.css
+│  ├─ api/availability.php #   空き状況API（JSON・カレンダーが呼ぶ）
+│  ├─ assets/
+│  │  ├─ style.css
+│  │  └─ calendar.js       #   公開/管理で共用するカレンダー描画
+│  ├─ hp.php ほか          #   デコイ（意図的な罠。後述「デコイページ」）
 │  └─ admin/               # 管理エリア（ログイン必須・共有ナビ）
 │     ├─ index.php         #     予約一覧・キャンセル（ダッシュボード）
 │     ├─ closures.php      #     特定日の休業/営業・個別の枠ふさぎ（カレンダー）
 │     ├─ slots.php         #     予約枠設定（営業時間/枠/定休日/休憩/祝日）
 │     ├─ mail.php          #     メール送信設定・テスト・デモモード
-│     ├─ account.php       #     管理アカウント（ID/パスワード/再設定先）
+│     ├─ account.php       #     管理アカウント（ID/パスワード/再設定先/2段階認証）
 │     ├─ reset_request.php #     パスワード/ログインのリセット要求
 │     ├─ reset.php         #     リセットのリンク先（新PW設定・初期化）
 │     └─ _nav.php          #     共有ナビバー（各ページが include）
 ├─ src/                    # 公開フォルダの外（ロジック・接続）
-│  ├─ core/                #   db.php  functions.php  settings.php  config.php
-│  ├─ auth/                #   auth.php  admin_guard.php
+│  ├─ core/
+│  │  ├─ config.php        #   初期管理アカウント等（ファイル設定）
+│  │  ├─ db.php            #   接続・テーブル自動作成
+│  │  ├─ functions.php     #   空き枠の計算ロジック（枠はDBに持たず毎回導出）
+│  │  ├─ reservations.php  #   予約モデル（薄いデータ層）
+│  │  ├─ closures.php      #   休業・枠ふさぎモデル
+│  │  ├─ settings.php      #   設定（DB保存）
+│  │  ├─ view.php          #   共有レイアウト（head/foot の partial）
+│  │  └─ honeypot.php      #   デコイの記録・自動ブロック（DB非依存の単独モジュール）
+│  ├─ auth/                #   auth.php  admin_guard.php  rate_limit.php  totp.php
 │  └─ mail/                #   notify.php  lib/PHPMailer/（※Git管理外。bash scripts/fetch-phpmailer.sh）
-├─ data/                   # DB実体・holidays.csv（公開フォルダ外・自動生成）
+├─ data/                   # DB実体・holidays.csv・ログ（公開フォルダ外・自動生成）
 ├─ docker/Dockerfile
 ├─ docker-compose.yml
 └─ scripts/fetch-phpmailer.sh
@@ -112,7 +127,7 @@ docker compose up -d --build
 
 設定は **2か所** に分かれています（役割が違います）。
 
-### 1. 初期管理アカウント — `src/config.php`（ファイル）
+### 1. 初期管理アカウント — `src/core/config.php`（ファイル）
 ```php
 define('INITIAL_ADMIN_ID',       'admin@example.com'); // 初期ログインID
 define('INITIAL_ADMIN_PASSWORD', 'changeme');          // 初期パスワード（平文・このまま使用）
@@ -150,6 +165,14 @@ GitHub Actions でデプロイする場合、リポジトリの Secret **`ADMIN_
 - **総当たり対策**: ログイン失敗が続くと送信元IPを一時ロック（既定 5回/15分 → 15分）。成功で解除。
 - **2段階認証（TOTP・任意）**: 管理画面「アカウント」で有効化すると、ログイン時に認証アプリ（Google Authenticator 等）の6桁コードを要求。**リカバリコード**付き、緊急復旧（`config.php` の `FORCE_INITIAL_ADMIN`）で解除可。純PHP実装で追加ライブラリ不要。
 
+### 🪤 デコイページ（意図的な「罠」）
+
+`public/` の中に `wp-login.php` / `xmlrpc.php` / `wp-admin/` / `administrator/` / `phpmyadmin/` があります。**これは WordPress の残骸ではなく、意図的に置いたデコイ**です。このアプリは WordPress を一切使っていません。
+
+自動化された攻撃ツールは、まずこうした「定番パス」を総当たりで探します。デコイはそのアクセスを記録し、繰り返す相手を一定時間ブロックします。実装は **DB に依存しない単独モジュール `src/core/honeypot.php`** で、書き込み可能な `data/` さえあれば動くため、レンタルサーバーへそのまま持ち込めます。
+
+不要なら `public/` からデコイのファイル／ディレクトリを削除するだけで無効化できます（本体の動作には影響しません）。
+
 ---
 
 ## ✉️ メール送信
@@ -171,9 +194,11 @@ GitHub Actions でデプロイする場合、リポジトリの Secret **`ADMIN_
 | テーブル | 用途 |
 |---|---|
 | `reservations` | 予約（日付・時刻・氏名・電話・メール・受付日時、`UNIQUE(date,time)`） |
-| `blocked_slots` | 休診・ブロック枠 |
-| `settings` | 店名・通知・送信方法・管理アカウント（key/value） |
+| `blocked_slots` | 開いている日の中の「1枠だけふさぐ」指定 |
+| `day_overrides` | 特定日の終日指定（`closed`=休業 / `open`=例外営業） |
+| `settings` | 店名・通知・送信方法・管理アカウント・2段階認証（key/value） |
 | `auth_tokens` | リセット用トークン（ハッシュ・期限・使用済みフラグ） |
+| `login_throttle` | ログイン失敗の記録（総当たり対策の一時ロック） |
 
 すべて初回アクセス時に自動作成されます。
 
