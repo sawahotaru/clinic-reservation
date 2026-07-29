@@ -3,9 +3,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-      args:
-        # .env の PHP_VERSION を使う（未指定なら 8.4）
-        PHP_VERSION: ${PHP_VERSION:-8.4}
     ports:
       - "${HOST_PORT:-8501}:80"
     volumes:
