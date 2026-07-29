@@ -1,6 +1,7 @@
 name: Deploy to lab.4510.be
 
-# このリポジトリの main が更新されたら、統合ハブ oracle-lab のデプロイを起動する。
+# このリポジトリの main が更新されたら、まず検査（PHP構文チェック＋秘密ファイル混入チェック）を
+# 通し、**通ったときだけ** 統合ハブ oracle-lab のデプロイを起動する。
 # oracle-lab 側 (deploy-oracle.yml) が repository_dispatch: clinic-updated を受け、
 # client_payload.service=clinic を見て **clinic サービスだけ** をVMで再ビルド/再起動する。
 #
@@ -13,10 +14,54 @@ name: Deploy to lab.4510.be
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
+  check:
+    name: php -l + secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      # PHP は構文エラーがそのまま本番の 500 になる（ビルド段が無いので誰も先に気づけない）。
+      # 全 .php を lint するのが、この構成で最も効く門番。
+      # xargs は 1つでも失敗すれば非ゼロで返るので、それをそのままジョブの失敗にする。
+      - name: Lint all PHP files
+        run: |
+          find . -name '*.php' -not -path './src/mail/lib/*' -print0 | xargs -0 -n1 php -l
+          echo "All PHP files parsed cleanly."
+
+      # 公開リポジトリなので、秘密情報がコミットされていないことを毎回確かめる。
+      # .gitignore はあくまで「うっかり add」を防ぐだけで、既に追跡済みなら効かない。
+      - name: Ensure no secrets are committed
+        run: |
+          hits=$(git ls-files | grep -iE '(^|/)\.env$|\.htpasswd|\.sqlite($|-)|honeypot_deny\.json|\.pem$|\.key$|id_rsa|id_ed25519' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Secret-looking files are tracked in git:"; echo "$hits"; exit 1
+          fi
+          echo "No secret files tracked."
+
+      # 管理画面は本番では秘密スラッグ配下に移設される。公開ソースに素の admin/ 以外の
+      # 経路が増えていないか（隠蔽の前提が崩れていないか）を軽く確認する。
+      - name: Sanity-check public layout
+        run: |
+          test -f public/index.php || { echo "::error::public/index.php is missing"; exit 1; }
+          test -d public/admin     || { echo "::error::public/admin/ is missing"; exit 1; }
+          echo "Public layout looks sane."
+
   notify:
+    name: Trigger oracle-lab deploy
+    needs: check
+    # 検査が通った main への push のときだけデプロイする（PR では走らせない）
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger oracle-lab deploy (scoped to clinic)
