@@ -41,48 +41,17 @@ $pdo->exec('CREATE TABLE IF NOT EXISTS day_overrides (
     status TEXT NOT NULL        -- open / closed
 )');
 
-// 旧 blocked_slots の「終日(time IS NULL)」行を day_overrides(closed) へ移行
-$nullBlocks = $pdo->query('SELECT DISTINCT date FROM blocked_slots WHERE time IS NULL')->fetchAll(PDO::FETCH_COLUMN);
-if ($nullBlocks) {
-    $up = $pdo->prepare("INSERT OR IGNORE INTO day_overrides(date, status) VALUES(?, 'closed')");
-    foreach ($nullBlocks as $d) {
-        $up->execute([$d]);
-    }
-    $pdo->exec('DELETE FROM blocked_slots WHERE time IS NULL');
-}
-
-// ===== 既存DBの移行: email カラムが無ければ追加（古いDBでも壊さない） =====
-$cols = $pdo->query("PRAGMA table_info(reservations)")->fetchAll(PDO::FETCH_COLUMN, 1);
-if (!in_array('email', $cols, true)) {
-    $pdo->exec('ALTER TABLE reservations ADD COLUMN email TEXT');
-}
-
-// ===== 既存DBの移行: 旧 UNIQUE(date,time) 制約を撤去（capacity対応） =====
-// SQLite は制約だけを後から落とせないので、テーブルを作り直してデータを移す。
-$createSql = $pdo->query(
-    "SELECT sql FROM sqlite_master WHERE type='table' AND name='reservations'"
-)->fetchColumn();
-if ($createSql && stripos($createSql, 'UNIQUE') !== false) {
-    $pdo->exec('BEGIN IMMEDIATE');
-    $pdo->exec('CREATE TABLE reservations_new (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        date       TEXT NOT NULL,
-        time       TEXT NOT NULL,
-        name       TEXT NOT NULL,
-        phone      TEXT NOT NULL,
-        email      TEXT,
-        created_at TEXT NOT NULL
-    )');
-    $pdo->exec('INSERT INTO reservations_new (id, date, time, name, phone, email, created_at)
-                SELECT id, date, time, name, phone, email, created_at FROM reservations');
-    $pdo->exec('DROP TABLE reservations');
-    $pdo->exec('ALTER TABLE reservations_new RENAME TO reservations');
-    $pdo->exec('COMMIT');
-}
-
 // ===== 設定テーブルの用意（店名・通知メール・送信方法など） =====
+// settings は key-value なので、新しい設定キーは ensureSettings が勝手に補完する。
 require_once __DIR__ . '/settings.php';
 ensureSettings($pdo);
+
+// ===== 固定列テーブルのスキーマ移行 =====
+// 上の CREATE TABLE IF NOT EXISTS は「無ければ作る」だけなので、後から列を足しても
+// 既存DBには届かない。列や索引の追加は必ず migrate.php の手順として書くこと。
+// 版番号（settings.schema_version）を見て、未適用の手順だけを当てる。
+require_once __DIR__ . '/migrate.php';
+migrateSchema($pdo);
 
 // ===== 管理アカウント・トークンの用意（初回に初期アカウント登録） =====
 require_once __DIR__ . '/../auth/auth.php';
