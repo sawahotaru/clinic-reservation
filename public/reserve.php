@@ -28,12 +28,24 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !preg_match('/^\d{2}:\d{2}$/'
 // ※ 休憩帯の枠は generateSlots() が既に除外しているので in_array で弾かれる。
 //    特定日の休業・手動ブロックは availableSlots() の残席判定に含まれる。
 // ※ 曜日別モードに対応するため、その日付に適用される枠ルール（dayCfg）で判定する。
+//
+// ⚠️ ここは「URL直打ち対策」だけでなく、**同時予約に負けた人が必ず通る道**でもある。
+//    人気の枠を複数人が同時に取りに行くと、1人が確定した瞬間に残りは全員ここへ落ちる。
+//    理由を伝えずにトップへ戻すと、送信したのに何も言われないため
+//    「予約できたのか分からない」状態になる。必ず理由を持たせて戻すこと。
 $dayCfg = dayCfg($cfg, $date);
-if (isClosedDay($date, $cfg, dayOverride($pdo, $date))
-    || !in_array($time, generateSlots($dayCfg), true)
-    || !isBookable($date, $time, $dayCfg)
-    || !in_array($time, availableSlots($pdo, $date, $cfg), true)) {
-    header('Location: index.php?date=' . urlencode($date));
+$unavailable = '';
+if (isClosedDay($date, $cfg, dayOverride($pdo, $date))) {
+    $unavailable = 'closed';                 // 休診日
+} elseif (!in_array($time, generateSlots($dayCfg), true)) {
+    $unavailable = 'invalid';                // その日には存在しない時刻（URL不正・設定変更）
+} elseif (!isBookable($date, $time, $dayCfg)) {
+    $unavailable = 'expired';                // 受付期間外（締切済み／先すぎる）
+} elseif (!in_array($time, availableSlots($pdo, $date, $cfg), true)) {
+    $unavailable = 'full';                   // 満席、または管理側でふさがれた
+}
+if ($unavailable !== '') {
+    header('Location: index.php?date=' . urlencode($date) . '&unavailable=' . $unavailable);
     exit;
 }
 

@@ -9,6 +9,15 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
     $date = date('Y-m-d');
 }
 
+// reserve.php が枠を受け付けられずに戻してきたときの理由（無言で戻さないため）。
+// 同時に同じ枠を取りに行って負けた人も必ずここを通る。
+$unavailableMsg = [
+    'full'    => '申し訳ありません。ご希望の枠は、ちょうど他の方のご予約が入りました。別の時間をお選びください。',
+    'closed'  => 'ご希望の日は休診日です。別の日をお選びください。',
+    'expired' => 'ご希望の枠は受付期間を過ぎています。別の日時をお選びください。',
+    'invalid' => 'ご希望の枠は現在ご利用いただけません。下の空き状況からお選びください。',
+][$_GET['unavailable'] ?? ''] ?? '';
+
 $cfg     = slotConfig($pdo);
 $closed  = isClosedDay($date, $cfg, dayOverride($pdo, $date));
 $slots   = $closed ? [] : availableSlotsDetailed($pdo, $date, $cfg);
@@ -16,6 +25,9 @@ $maxDate = date('Y-m-d', time() + $cfg['window'] * 86400); // 予約可能な最
 ?>
 <?php page_head('ご予約 | サンプル整体院'); ?>
     <h1>ご予約</h1>
+    <?php if ($unavailableMsg): ?>
+      <p class="error" role="alert"><?= htmlspecialchars($unavailableMsg) ?></p>
+    <?php endif; ?>
     <p class="hint">カレンダーから日付を選ぶと、その日の空き枠が表示されます。</p>
 
     <p class="cal-legend">
