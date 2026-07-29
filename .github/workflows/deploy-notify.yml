@@ -1,7 +1,13 @@
 name: Deploy to lab.4510.be
 
-# このリポジトリの main が更新されたら、まず検査（PHP構文チェック＋秘密ファイル混入チェック）を
-# 通し、**通ったときだけ** 統合ハブ oracle-lab のデプロイを起動する。
+# このリポジトリの main が更新されたら、まず検査（PHP構文チェック＋秘密ファイル混入チェック、
+# ＋**本番用Dockerイメージのビルドと起動確認**）を通し、**すべて通ったときだけ**
+# 統合ハブ oracle-lab のデプロイを起動する。
+#
+# ⚠ 2026-07-29 追加: 以前は php -l だけがゲートで、**Dockerfile.oracle を一度もビルドして
+#   いなかった**。Apache設定・.htaccess・管理スラッグ移設はビルド時と起動時にしか効かないため、
+#   構文チェックでは公開範囲の事故（AllowOverride の設定ミスで src/ や data/ が見える等）を
+#   検出できなかった。image ジョブを足して塞いだ。
 # oracle-lab 側 (deploy-oracle.yml) が repository_dispatch: clinic-updated を受け、
 # client_payload.service=clinic を見て **clinic サービスだけ** をVMで再ビルド/再起動する。
 #
@@ -57,9 +63,68 @@ jobs:
           test -d public/admin     || { echo "::error::public/admin/ is missing"; exit 1; }
           echo "Public layout looks sane."
 
+  image:
+    name: docker build + 起動確認
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 本番(VM)で使うのは docker/Dockerfile.oracle。ここが壊れるとデプロイが失敗するが、
+      # PHP構文チェックだけでは検出できない（Apache設定・.htaccess・スラッグ移設は
+      # ビルド時と起動時に効くため）。
+      - name: Build image (本番用 Dockerfile.oracle)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.oracle
+          load: true
+          tags: clinic:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ⚠ ADMIN_SLUG は渡さない（CIに秘密値を持ち込まない）。未指定時は /admin/ のまま
+      #   Basic認証がかかる仕様なので、ここでは 401 を期待値とする。本番は 404。
+      - name: 起動確認と公開範囲の検査
+        run: |
+          docker run -d --name clinic-ci -p 18081:80 clinic:ci
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:18081/clinic-reservation/ || echo 000)
+            if [ "$code" = "200" ]; then echo "  起動成功（約$((i*3))秒）"; break; fi
+            sleep 3
+          done
+
+          fail=0
+          expect() {  # expect <パス> <期待コード> <説明>
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://localhost:18081$1" || echo 000)
+            if [ "$code" = "$2" ]; then
+              echo "  OK   $1 -> $code ($3)"
+            else
+              echo "::error::$1 は $2 を期待したが $code だった ($3)"
+              fail=1
+            fi
+          }
+          expect /clinic-reservation/       200 "公開ページ"
+          expect /clinic-reservation/src/   403 "非公開ディレクトリの拒否"
+          expect /clinic-reservation/data/  403 "データディレクトリの拒否"
+          expect /clinic-reservation/admin/ 401 "管理画面のBasic認証"
+
+          echo "  PHP: $(docker exec clinic-ci php -v 2>&1 | head -1)"
+          [ "$fail" -eq 0 ] || { echo "::error::公開範囲の検査に失敗（.htaccess/AllowOverride の設定を確認）"; exit 1; }
+
+      - name: 起動ログ（失敗時）
+        if: failure()
+        run: docker logs clinic-ci 2>&1 | tail -120 || true
+
+      - name: 後片付け
+        if: always()
+        run: docker rm -f clinic-ci || true
+
   notify:
     name: Trigger oracle-lab deploy
-    needs: check
+    needs: [check, image]
     # 検査が通った main への push のときだけデプロイする（PR では走らせない）
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
