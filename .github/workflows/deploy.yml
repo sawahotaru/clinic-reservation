@@ -30,7 +30,7 @@ jobs:
       # 未設定なら従来通り /admin/（Basic認証）で公開する。
       ADMIN_SLUG: ${{ secrets.ADMIN_SLUG }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Vendor PHPMailer (fetch at deploy time)
         run: bash scripts/fetch-phpmailer.sh
