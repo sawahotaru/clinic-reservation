@@ -7,6 +7,7 @@ $navItems = [
     'slots'    => ['予約枠設定',  'slots.php'],
     'mail'     => ['メール',      'mail.php'],
     'account'  => ['アカウント',  'account.php'],
+    'guide'    => ['使い方',      'guide.php'],
 ];
 $active = $navActive ?? '';
 ?>
