@@ -80,3 +80,9 @@ $maxDate = date('Y-m-d', time() + $cfg['window'] * 86400); // 予約可能な最
     </noscript>
   <script src="assets/calendar.js"></script>
 <?php page_foot(); ?>
+<?php
+// リマインダーの実行契機（cron が用意できない環境の保険）。
+// ⚠️ ページを出し切った後に呼ぶ。閲覧者を送信処理で待たせないため。
+// 実行間隔の間引きと、失敗しても画面に影響させない処理は remindersTick の中にある。
+require_once __DIR__ . '/../src/mail/reminders.php';
+remindersTick($pdo);

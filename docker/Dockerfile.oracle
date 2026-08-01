@@ -57,6 +57,14 @@ RUN set -eux; \
     rm -rf ./scripts; \
     echo "clinic arranged (admin dir: $ADMIN_DIR)"
 
+# リマインダーのCLI。⚠ 上の Arrange より**後**に置くこと。
+# Arrange の include パス正規化（'/../src/' → '/src/'）が bin/*.php にも当たってしまい、
+# bin から見た src の位置（../src）を壊すため。
+# この配置では docroot 直下＝この階層なので、Web からも見えてしまう。二重に塞ぐ:
+#   ① .htaccess で拒否  ② スクリプト自身が PHP_SAPI !== 'cli' なら 404 で即終了
+COPY bin/ ./bin/
+RUN printf 'Require all denied\n' > bin/.htaccess
+
 # data/ は起動時に www-data 所有へ（SQLite/.htpasswd/log/holidays を置く永続ボリューム）
 COPY docker/oracle-entrypoint.sh /usr/local/bin/oracle-entrypoint.sh
 RUN chmod +x /usr/local/bin/oracle-entrypoint.sh

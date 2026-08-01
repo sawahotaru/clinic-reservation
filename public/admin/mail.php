@@ -1,6 +1,7 @@
 <?php
 require __DIR__ . '/../../src/core/db.php';            // settings / auth も読み込み済みになる
 require __DIR__ . '/../../src/mail/notify.php';
+require __DIR__ . '/../../src/mail/reminders.php';
 require __DIR__ . '/../../src/auth/admin_guard.php';   // 未ログインならここで停止
 
 $msg = '';
@@ -15,6 +16,9 @@ if (($_POST['action'] ?? '') === 'save') {
         'mail_from'    => trim($_POST['mail_from'] ?? ''),
         'smtp_user'    => trim($_POST['smtp_user'] ?? ''),
         'demo_mode'    => (($_POST['demo_mode'] ?? '') === '1') ? '1' : '0',
+        'reminder_enabled'     => (($_POST['reminder_enabled'] ?? '') === '1') ? '1' : '0',
+        'reminder_days_before' => (string)max(0, min(30, (int)($_POST['reminder_days_before'] ?? 1))),
+        'reminder_send_hour'   => (string)max(0, min(23, (int)($_POST['reminder_send_hour'] ?? 18))),
     ];
     // アプリパスワードは4分割窓（smtp_pass[]）。結合し空白を除去。
     // 入力があった時だけ更新（空なら既存を保持）。1窓に16桁貼っても結合で復元される。
@@ -35,8 +39,28 @@ if (($_POST['action'] ?? '') === 'test') {
     $msgType = $ok ? 'info' : 'error';
 }
 
+// リマインダーの手動送信（cron を待たずに今すぐ送る）
+if (($_POST['action'] ?? '') === 'remind') {
+    $res = sendDueReminders($pdo);
+    if ($res['skipped']) {
+        $msg = 'リマインダーが無効です。下の「来院前のお知らせ」をONにして保存してください。';
+        $msgType = 'error';
+    } elseif ($res['sent'] === 0 && $res['failed'] === 0) {
+        $msg = '今すぐ送る対象はありませんでした（送信済み・メール未入力・送信時刻前のいずれか）。';
+    } else {
+        $msg = "リマインダーを送信しました：成功 {$res['sent']} 件"
+             . ($res['failed'] ? " / 失敗 {$res['failed']} 件" : '');
+        $msgType = $res['failed'] ? 'error' : 'info';
+    }
+}
+
 $s = getSettings($pdo);
 $hasPass = $s['smtp_pass'] !== '';
+
+// リマインダーの現況（設定値の意味を文章で見せる）
+$remCfg  = reminderConfig($s);
+$remDue  = dueReminders($pdo, $s);
+$remSent = (int)$pdo->query('SELECT COUNT(*) FROM reminder_log')->fetchColumn();
 
 // アプリパスワードの4分割入力（使い回し用）
 $passBoxesHtml = '<div class="apppass" data-apppass>'
@@ -128,6 +152,43 @@ $navTitle  = 'メール設定';
       </fieldset>
 
       <fieldset class="field-group">
+        <legend>来院前のお知らせ（リマインダー）</legend>
+        <label class="radio">
+          <input type="checkbox" name="reminder_enabled" value="1" <?= $remCfg['enabled'] ? 'checked' : '' ?>>
+          ご予約日が近づいたら、お客様へお知らせメールを送る
+        </label>
+        <div class="reminder-when">
+          <label>何日前に送るか
+            <select name="reminder_days_before">
+              <?php foreach ([0 => '当日', 1 => '1日前', 2 => '2日前', 3 => '3日前', 7 => '7日前'] as $d => $labelText): ?>
+                <option value="<?= $d ?>" <?= $remCfg['days'] === $d ? 'selected' : '' ?>><?= $labelText ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+          <label>その日の何時に送るか
+            <select name="reminder_send_hour">
+              <?php for ($h = 0; $h < 24; $h++): ?>
+                <option value="<?= $h ?>" <?= $remCfg['hour'] === $h ? 'selected' : '' ?>><?= sprintf('%02d時', $h) ?></option>
+              <?php endfor; ?>
+            </select>
+          </label>
+        </div>
+        <p class="hint">
+          <?php if ($remCfg['days'] === 0): ?>
+            <strong>ご予約当日の<?= sprintf('%02d', $remCfg['hour']) ?>時</strong>を過ぎたら送ります。
+          <?php else: ?>
+            <strong>ご予約日の<?= $remCfg['days'] ?>日前の<?= sprintf('%02d', $remCfg['hour']) ?>時</strong>を過ぎたら送ります。
+          <?php endif; ?>
+          メールアドレスをご入力いただいた方だけが対象で、<strong>1件のご予約につき1通</strong>です。
+          お知らせの時刻より後に入ったご予約には送りません（ご予約直後の確認メールと重なるため）。
+        </p>
+        <p class="hint">
+          いま送信を待っているご予約：<strong><?= count($remDue) ?>件</strong>
+          （これまでに送った件数：<?= $remSent ?>件）
+        </p>
+      </fieldset>
+
+      <fieldset class="field-group">
         <legend>デモモード</legend>
         <label class="radio">
           <input type="checkbox" name="demo_mode" value="1" <?= ($s['demo_mode'] ?? '0') === '1' ? 'checked' : '' ?>>
@@ -143,6 +204,15 @@ $navTitle  = 'メール設定';
       <input type="hidden" name="action" value="test">
       <button type="submit" class="secondary">現在の設定でテスト送信</button>
       <span class="hint">「通知先メール」宛に1通送って、届くか確認できます（保存後に実行）。</span>
+    </form>
+
+    <form method="post" class="test-form">
+      <input type="hidden" name="action" value="remind">
+      <button type="submit" class="secondary">お知らせメールを今すぐ送る</button>
+      <span class="hint">
+        送信を待っているご予約（<?= count($remDue) ?>件）へ、時刻を待たずに送ります。
+        送信済みのものへ二重に送ることはありません。
+      </span>
     </form>
 
   <script>

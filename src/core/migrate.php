@@ -80,6 +80,22 @@ function migrationSteps(): array
             $pdo->exec('CREATE INDEX IF NOT EXISTS idx_reservations_date_time ON reservations(date, time)');
             $pdo->exec('CREATE INDEX IF NOT EXISTS idx_blocked_slots_date     ON blocked_slots(date)');
         },
+
+        // --- 3: リマインダーの送信済み台帳 ---
+        // 「1予約につき1通だけ」を保証する要。主キーが reservation_id なので、
+        // INSERT OR IGNORE が成功した側だけが送信する（＝送信権の取得）形にでき、
+        // 同時に2つの実行経路（cron と 画面アクセス契機）が走っても二重送信しない。
+        //
+        // 予約をキャンセルすると reservations の行は削除されるので、ここに孤児の行が残る。
+        // 消さずに放置してよい: reservations.id は AUTOINCREMENT ＝ SQLite は削除済みIDを
+        // **再利用しない**ので、別人の予約が「送信済み」と誤判定されることはない。
+        3 => function (PDO $pdo): void {
+            $pdo->exec('CREATE TABLE IF NOT EXISTS reminder_log (
+                reservation_id INTEGER PRIMARY KEY,
+                sent_at        TEXT NOT NULL,
+                result         TEXT
+            )');
+        },
     ];
 }
 

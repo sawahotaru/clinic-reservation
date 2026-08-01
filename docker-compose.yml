@@ -9,6 +9,8 @@ services:
       # ソースをマウント（編集が即反映される）
       - ./public:/var/www/html/public
       - ./src:/var/www/html/src
+      # リマインダーのCLI（cron から叩く想定。docroot は public/ なのでWebからは見えない）
+      - ./bin:/var/www/html/bin
       # DBの実体を永続化（コンテナを消してもデータは残る）
       - ./data:/var/www/html/data
     # お店の設定（店名・メール・管理パスワード）は src/config.php で行う。

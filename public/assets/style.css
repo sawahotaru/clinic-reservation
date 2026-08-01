@@ -181,6 +181,9 @@ hr.sep { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
 .secret-body { padding:0 12px 12px; display:flex; flex-direction:column; gap:10px; border-top:1px solid #f1f5f9; margin-top:2px; padding-top:12px; }
 /* 送信方法ペインの出し分け（hidden が display:flex に負けないように） */
 .method-pane[hidden] { display:none; }
+/* リマインダーの「何日前 / 何時」。狭い画面では自然に縦へ折り返す */
+.reminder-when { display:flex; gap:12px; flex-wrap:wrap; }
+.reminder-when label { flex:1 1 160px; }
 /* 一律/曜日別の出し分け */
 .mode-pane[hidden] { display:none; }
 /* 曜日別の入力テーブル */
