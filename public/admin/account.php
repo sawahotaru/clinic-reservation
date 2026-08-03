@@ -56,7 +56,7 @@ if (($_POST['action'] ?? '') === 'twofa_disable') {
     authSet($pdo, 'twofa_secret', '');
     authSet($pdo, 'twofa_recovery', '[]');
     unset($_SESSION['twofa_setup_secret']);
-    $msg = '2段階認証を無効にしました。';
+    $msg = '2段階認証を無効にしました。認証アプリに残っている登録は、もう使えないので削除してください。';
 }
 
 // 有効化フロー継続中なら、表示用の秘密鍵・otpauth URI を用意
@@ -136,7 +136,14 @@ $navTitle  = '管理アカウント';
 
     <?php if (twofaEnabled($pdo)): ?>
       <p class="info">状態: <strong>有効 ✓</strong>（ログイン時に認証アプリの6桁コードが必要です）</p>
-      <form method="post" onsubmit="return confirm('2段階認証を無効にしますか？');">
+      <div class="warn">
+        ⚠️ <strong>一度無効にすると、元の設定には戻せません。</strong>
+        もう一度有効にするときは<strong>新しい鍵が作り直される</strong>ため、認証アプリへの登録と
+        リカバリコードの控えを最初からやり直すことになります。
+        そのとき<strong>アプリに残った古い登録は必ず削除してください</strong>（同じ名前が2つ並び、
+        古いほうの数字を入れて「認証コードが違います」になります）。
+      </div>
+      <form method="post" onsubmit="return confirm('2段階認証を無効にします。\n\nもう一度有効にするときは新しい鍵が作り直され、認証アプリへの登録とリカバリコードの控えをやり直すことになります。\n（そのときアプリの古い登録は削除してください）\n\n無効にしますか？');">
         <input type="hidden" name="action" value="twofa_disable">
         <button type="submit" class="danger">2段階認証を無効にする</button>
       </form>
@@ -149,6 +156,12 @@ $navTitle  = '管理アカウント';
         catch (Throwable $e) { $twofaQr = ''; }
       ?>
       <p class="hint">認証アプリ（Google Authenticator / Authy / Microsoft Authenticator など）に登録してください。</p>
+      <div class="warn">
+        ⚠️ <strong>以前このシステムを登録したことがある方へ</strong><br>
+        ここに出る鍵は<strong>毎回まったく新しいものが作られます</strong>。認証アプリに前の登録が残っていると、
+        同じ名前が2つ並び、<strong>古いほうの数字を入力して「認証コードが違います」になります</strong>。
+        新しく読み取ったら、<strong>アプリ側で古い登録を削除してください。</strong>
+      </div>
       <ol class="totp-steps">
         <?php if ($twofaQr): ?>
           <li>アプリで「アカウントを追加」→「QRコードをスキャン」を選ぶ。</li>
