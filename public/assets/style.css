@@ -249,3 +249,25 @@ select { padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-size:1r
   .admin-nav, .guide-toc { display:none; }
   .guide-shot img { box-shadow:none; }
 }
+
+/* ===== 統計（管理・stats.php） ===== */
+.stat-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px 18px; margin:16px 0; }
+.stat-card h2 { margin:0 0 6px; font-size:1.05rem; }
+.stat-card h3 { margin:18px 0 8px; font-size:.95rem; }
+
+/* 数字タイル。auto-fit なので、画面が狭ければ勝手に縦に積まれる（別のブレークポイント不要） */
+.stat-tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:10px; }
+.stat-tile { background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; }
+.stat-tile-label { display:block; font-size:.75rem; color:#6b7280; }
+.stat-tile strong { display:block; font-size:1.5rem; line-height:1.3; }
+.stat-tile strong small { font-size:.8rem; font-weight:400; color:#6b7280; margin-left:2px; }
+.stat-tile-note { display:block; font-size:.75rem; color:#6b7280; }
+
+/* 棒グラフ。外部ライブラリを使わないのは、レンタルサーバーへ置いたときも
+   ネットワークに出ずに同じ見た目で動かすため（CDN障害・社内回線の影響を受けない） */
+.stat-row { display:flex; align-items:center; gap:10px; padding:3px 0; }
+.stat-label { flex:0 0 4.5em; font-size:.85rem; color:#374151; }
+.stat-bar { flex:1 1 auto; background:#f1f5f9; border-radius:6px; height:16px; overflow:hidden; }
+.stat-fill { display:block; height:100%; background:#0ea5e9; border-radius:6px; }
+.stat-value { flex:0 0 3.5em; text-align:right; font-size:.85rem; font-variant-numeric:tabular-nums; }
+.stat-value small { color:#6b7280; margin-left:2px; }

@@ -3,6 +3,7 @@
 // 各ページで $navActive（キー）と $navTitle を定義してから include すること。
 $navItems = [
     'index'    => ['予約一覧',   'index.php'],
+    'stats'    => ['統計',       'stats.php'],
     'closures' => ['休業・枠',    'closures.php'],
     'slots'    => ['予約枠設定',  'slots.php'],
     'mail'     => ['メール',      'mail.php'],
