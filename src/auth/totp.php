@@ -52,10 +52,26 @@ function totp_code(string $secret, int $slice): string
     return str_pad((string)$part, 6, '0', STR_PAD_LEFT);
 }
 
+/**
+ * 全角の英数字・ハイフンを半角へ寄せる（mbstring 非依存）。
+ * PCでは日本語IMEが有効なまま6桁を打ってしまうことが多く、全角のまま送られると
+ * preg_replace('/\D/') が全部消してしまい「コードが違います」になる。入口で救う。
+ */
+function totp_normalize_input(string $s): string
+{
+    static $zen = ['０','１','２','３','４','５','６','７','８','９',
+                   'ａ','ｂ','ｃ','ｄ','ｅ','ｆ','Ａ','Ｂ','Ｃ','Ｄ','Ｅ','Ｆ',
+                   '－','ー','−','―','‐','　'];
+    static $han = ['0','1','2','3','4','5','6','7','8','9',
+                   'a','b','c','d','e','f','A','B','C','D','E','F',
+                   '-','-','-','-','-',''];
+    return str_replace($zen, $han, trim($s));
+}
+
 /** 現在時刻の ±$window スライスでコードを検証（端末との時計ズレ許容） */
 function totp_verify(string $secret, string $code, int $window = 1): bool
 {
-    $code = preg_replace('/\D/', '', $code);
+    $code = preg_replace('/\D/', '', totp_normalize_input($code));
     if (strlen($code) !== 6 || $secret === '') return false;
     $now = (int)floor(time() / 30);
     for ($i = -$window; $i <= $window; $i++) {
@@ -95,7 +111,7 @@ function twofa_hash_recovery(array $codes): array
 /** 入力コードが未使用のリカバリコードなら消費して true。settings を更新する。 */
 function twofa_consume_recovery(PDO $pdo, string $code): bool
 {
-    $code = strtolower(trim($code));
+    $code = strtolower(totp_normalize_input($code));   // リカバリコードも全角で入りうる
     $stored = json_decode(authGet($pdo, 'twofa_recovery', '[]'), true);
     if (!is_array($stored) || !$stored) return false;
     $h = hash('sha256', $code);

@@ -1,6 +1,7 @@
 <?php
 require __DIR__ . '/../../src/core/db.php';
 require __DIR__ . '/../../src/auth/admin_guard.php';   // 未ログインならここで停止
+require __DIR__ . '/../../src/core/qr.php';            // 2段階認証のセットアップQR
 
 $msg = '';
 $msgType = 'info';
@@ -141,21 +142,46 @@ $navTitle  = '管理アカウント';
       </form>
 
     <?php elseif ($twofaSecretShow): ?>
-      <p class="hint">認証アプリ（Google Authenticator / Authy / Microsoft Authenticator など）に下の鍵を登録してください。</p>
+      <?php
+        // QR生成は失敗しても設定を止めない（下の手入力で必ず登録できる）
+        $twofaQr = '';
+        try { $twofaQr = qr_svg($twofaUriShow, 5, 4, '2段階認証のセットアップ用QRコード'); }
+        catch (Throwable $e) { $twofaQr = ''; }
+      ?>
+      <p class="hint">認証アプリ（Google Authenticator / Authy / Microsoft Authenticator など）に登録してください。</p>
       <ol class="totp-steps">
-        <li>アプリで「アカウントを追加」→「セットアップキーを手動入力」を選ぶ（種類は「時間ベース/TOTP」）。</li>
-        <li>キーに次の値を入力（アカウント名は任意）:
-          <div class="totp-secret"><code><?= htmlspecialchars(trim(chunk_split($twofaSecretShow, 4, ' '))) ?></code></div>
-        </li>
-        <li>スマホでこのページを開いているなら、次のリンクのタップで直接登録できます:<br>
-          <a href="<?= htmlspecialchars($twofaUriShow) ?>">認証アプリに登録する</a>
-        </li>
+        <?php if ($twofaQr): ?>
+          <li>アプリで「アカウントを追加」→「QRコードをスキャン」を選ぶ。</li>
+          <li>スマホのカメラでこのQRコードを読み取る:
+            <div class="totp-qr"><?= $twofaQr ?></div>
+          </li>
+        <?php else: ?>
+          <li>アプリで「アカウントを追加」→「セットアップキーを手動入力」を選ぶ（種類は「時間ベース/TOTP」）。</li>
+          <li>キーに次の値を入力（アカウント名は任意）:
+            <div class="totp-secret"><code><?= htmlspecialchars(trim(chunk_split($twofaSecretShow, 4, ' '))) ?></code></div>
+          </li>
+        <?php endif; ?>
         <li>アプリに表示された6桁を入力して有効化:</li>
       </ol>
+
+      <?php if ($twofaQr): ?>
+        <details class="totp-manual">
+          <summary>QRコードを読み取れないときは</summary>
+          <div class="totp-manual-body">
+            <p class="hint">アプリで「セットアップキーを手動入力」を選び（種類は「時間ベース/TOTP」）、次の値を入力してください。アカウント名は任意です。</p>
+            <div class="totp-secret"><code><?= htmlspecialchars(trim(chunk_split($twofaSecretShow, 4, ' '))) ?></code></div>
+            <p class="hint">スマホでこのページを開いている場合は、次のリンクのタップでも登録できます:<br>
+              <a href="<?= htmlspecialchars($twofaUriShow) ?>">認証アプリに登録する</a>
+            </p>
+          </div>
+        </details>
+      <?php endif; ?>
       <form method="post" class="reserve-form">
         <input type="hidden" name="action" value="twofa_confirm">
         <label>認証コード（6桁）
-          <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" autofocus required>
+          <input type="text" name="code" class="otp-input" data-otp="digits"
+                 inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                 autocomplete="one-time-code" autofocus required>
         </label>
         <button type="submit">確認して有効化</button>
       </form>
@@ -167,4 +193,5 @@ $navTitle  = '管理アカウント';
         <button type="submit">2段階認証を有効化する</button>
       </form>
     <?php endif; ?>
+<script src="../assets/otp-input.js"></script>
 <?php page_foot(); ?>

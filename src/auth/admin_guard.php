@@ -84,8 +84,8 @@ if (empty($_SESSION['admin']) && !empty($_SESSION['twofa_pending'])):
     <form method="post" class="reserve-form">
       <input type="hidden" name="action" value="twofa">
       <label>認証コード
-        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code"
-               autofocus required>
+        <input type="text" name="code" class="otp-input" inputmode="numeric"
+               autocomplete="one-time-code" autofocus required>
       </label>
       <button type="submit">認証</button>
     </form>
@@ -93,6 +93,7 @@ if (empty($_SESSION['admin']) && !empty($_SESSION['twofa_pending'])):
       認証アプリを使えない場合は<strong>リカバリコード</strong>も入力できます。
       ／ <a href="?cancel=1">最初からやり直す</a>
     </p>
+<script src="../assets/otp-input.js"></script>
 <?php page_foot(); ?>
 <?php
     exit;

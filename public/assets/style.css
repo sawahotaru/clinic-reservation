@@ -220,6 +220,25 @@ select { padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-size:1r
   display: grid; grid-template-columns: repeat(2, max-content); gap: 6px 20px;
 }
 .recovery-codes code { font-size: 1.05rem; letter-spacing: 1px; }
+/* セットアップQR。読み取り精度のため白地・余白は SVG 側に持たせている */
+.totp-qr {
+  /* inline-block だと行ボックスに入り、同じ li の文がQRの下端に回り込む */
+  margin: 10px 0; display: block; width: fit-content; background: #fff;
+  border: 1px solid #d1d5db; border-radius: 10px; padding: 6px; line-height: 0;
+}
+.totp-qr svg { display: block; width: 100%; max-width: 260px; height: auto; }
+.totp-manual { margin: 4px 0 16px; }
+.totp-manual > summary { cursor: pointer; color: #2563eb; font-size: .92rem; }
+.totp-manual-body {
+  margin-top: 10px; padding: 12px 14px;
+  background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px;
+}
+/* 認証コード欄。桁を数えやすいよう等幅・字間広め（正規化は otp-input.js） */
+.otp-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.25rem; letter-spacing: .35em; text-indent: .35em;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ===== 使い方ガイド（guide.php・お店の方向け） ===== */
 .guide-lead { background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:12px 14px; line-height:1.7; }
