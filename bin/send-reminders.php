@@ -4,6 +4,7 @@
  *
  *   php bin/send-reminders.php          送信する
  *   php bin/send-reminders.php --dry    送信せず、対象だけ一覧する
+ *   php bin/send-reminders.php --quiet  送るものが無ければ何も出力しない（定期実行用）
  *
  * cron の例（毎時0分に実行。時刻の判定はアプリ側の設定で行うので毎時で構わない）:
  *   0 * * * * cd /path/to/clinic-reservation && php bin/send-reminders.php >> data/cron.log 2>&1
@@ -24,13 +25,18 @@ require __DIR__ . '/../src/core/db.php';
 require __DIR__ . '/../src/mail/reminders.php';
 
 $dry = in_array('--dry', $argv, true);
+// 定期実行から使う。10分おきに「対象0件」と言われ続けると、ログが読めなくなって
+// 本当に見たい行（失敗）が埋もれる。手で叩いたときは今までどおり必ず何か返す。
+$quiet = in_array('--quiet', $argv, true);
 $s   = getSettings($pdo);
 $cfg = reminderConfig($s);
 
 $stamp = date('Y-m-d H:i:s');
 
 if (!$cfg['enabled'] && !$dry) {
-    echo "[{$stamp}] リマインダーは無効です（管理画面の「メール設定」で有効にしてください）\n";
+    if (!$quiet) {
+        echo "[{$stamp}] リマインダーは無効です（管理画面の「メール設定」で有効にしてください）\n";
+    }
     exit(0);
 }
 
@@ -47,8 +53,11 @@ if ($dry) {
 
 $res = sendDueReminders($pdo);
 alignDataOwnership();
-echo "[{$stamp}] リマインダー送信: 成功 {$res['sent']} 件 / 失敗 {$res['failed']} 件"
-   . (isDemoMode($s) ? '（デモモードのため実送信なし）' : '') . "\n";
+// --quiet でも「送った」「失敗した」は必ず出す。黙ってよいのは「何も起きなかった」ときだけ。
+if (!$quiet || $res['sent'] > 0 || $res['failed'] > 0) {
+    echo "[{$stamp}] リマインダー送信: 成功 {$res['sent']} 件 / 失敗 {$res['failed']} 件"
+       . (isDemoMode($s) ? '（デモモードのため実送信なし）' : '') . "\n";
+}
 exit($res['failed'] > 0 ? 1 : 0);
 
 /**
