@@ -1,0 +1,93 @@
+name: PHPMailer の更新確認
+
+# 【なぜ要るか】
+# PHPMailer は Composer ではなく `scripts/fetch-phpmailer.sh` が GitHub から直接
+# ダウンロードして配置する方式（レンタルサーバーでも動くようにする方針のため）。
+# その代償として **Dependabot の監視対象外**になる。Dependabot は composer.json /
+# package.json を見て動くので、このリポジトリでは Actions と Dockerfile のベース
+# イメージしか追えていない。
+#
+# PHPMailer はメール送信という性質上、過去に脆弱性の報告があるライブラリなので、
+# 放置すると気づかないまま古い版を使い続けることになる。週1回だけ最新リリースと
+# 突き合わせ、差があれば Issue を立てて気づけるようにする。
+#
+# 【なぜ自動でPRを出さないか】
+# 更新すべきファイルはリポジトリに存在しない（.gitignore で除外）。変えるのは
+# fetch-phpmailer.sh の VER 一行だけで、差分としては自明。むしろ大事なのは
+# 「本番と同じ PHP で実際に送信できるか確認する」ことなので、人が判断できるよう
+# Issue に手順を書いて渡す形にした。本文は .github/phpmailer-update-issue.md。
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'      # 毎週月曜 09:00 JST（UTC 00:00）
+  workflow_dispatch:          # 手動でも回せるようにしておく
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: 最新リリースと突き合わせ
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: バージョンを比較
+        id: cmp
+        run: |
+          set -euo pipefail
+
+          CURRENT=$(grep -E '^VER=' scripts/fetch-phpmailer.sh | sed -E 's/^VER="?([^"]+)"?.*/\1/')
+          if [ -z "$CURRENT" ]; then
+            echo "::error::scripts/fetch-phpmailer.sh から VER を読み取れなかった"
+            exit 1
+          fi
+
+          LATEST=$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            https://api.github.com/repos/PHPMailer/PHPMailer/releases/latest | jq -r .tag_name)
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "::error::PHPMailer の最新リリースを取得できなかった"
+            exit 1
+          fi
+
+          echo "  現在: $CURRENT"
+          echo "  最新: $LATEST"
+          {
+            echo "current=$CURRENT"
+            echo "latest=$LATEST"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$CURRENT" = "$LATEST" ]; then
+            echo "outdated=false" >> "$GITHUB_OUTPUT"
+            echo "最新版を使っている。何もしない。"
+          else
+            echo "outdated=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::PHPMailer に新しいリリースがある（$CURRENT → $LATEST）"
+          fi
+
+      - name: Issue を立てる（重複は作らない）
+        if: steps.cmp.outputs.outdated == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT: ${{ steps.cmp.outputs.current }}
+          LATEST: ${{ steps.cmp.outputs.latest }}
+        run: |
+          set -euo pipefail
+          TITLE="PHPMailer の更新: ${CURRENT} → ${LATEST}"
+
+          # 同じ見出しの Issue が既に開いていれば、毎週作り直さない
+          EXISTING=$(gh issue list --state open --search "in:title \"${TITLE}\"" \
+                       --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            echo "既に Issue #${EXISTING} がある。何もしない。"
+            exit 0
+          fi
+
+          sed -e "s|{{CURRENT}}|${CURRENT}|g" -e "s|{{LATEST}}|${LATEST}|g" \
+            .github/phpmailer-update-issue.md > /tmp/body.md
+
+          gh issue create --title "$TITLE" --body-file /tmp/body.md
+          echo "Issue を作成した: $TITLE"

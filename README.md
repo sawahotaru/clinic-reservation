@@ -194,7 +194,8 @@ GitHub Actions でデプロイする場合、リポジトリの Secret **`ADMIN_
 | Gmail | Gmail の SMTP（PHPMailer） | 届きやすい。Googleの**2段階認証＋アプリパスワード**が必要 |
 
 - 送信内容・結果は `data/mail.log` に記録。送信に失敗しても**予約処理は止まりません**（予約はDB確定済み）。
-- PHPMailer は `bash scripts/fetch-phpmailer.sh` で `src/mail/lib/PHPMailer/` に取得します（Gmail送信を使う場合）。
+- PHPMailer は `bash scripts/fetch-phpmailer.sh` で `src/mail/lib/PHPMailer/` に取得します（Gmail送信を使う場合）。**Composer は使いません**（共有サーバーでは `composer install` できないことがあるため）。本番は `docker/Dockerfile.oracle` がビルド時に同じスクリプトを実行します。バージョンはこのスクリプトの `VER` 一箇所だけで決まります。
+  - ⚠️ この方式のため **PHPMailer は Dependabot の監視対象外**です（Dependabot は `composer.json` 等を見るため）。代わりに `.github/workflows/check-phpmailer.yml` が**週次で最新リリースと突き合わせ、差があれば Issue を自動作成**します。
 
 ### ⏰ 来院前リマインダー
 
