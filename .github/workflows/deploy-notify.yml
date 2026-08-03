@@ -70,13 +70,13 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # 本番(VM)で使うのは docker/Dockerfile.oracle。ここが壊れるとデプロイが失敗するが、
       # PHP構文チェックだけでは検出できない（Apache設定・.htaccess・スラッグ移設は
       # ビルド時と起動時に効くため）。
       - name: Build image (本番用 Dockerfile.oracle)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile.oracle
