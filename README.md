@@ -63,14 +63,17 @@ clinic-reservation/
 │  ├─ api/availability.php #   空き状況API（JSON・カレンダーが呼ぶ）
 │  ├─ assets/
 │  │  ├─ style.css
-│  │  └─ calendar.js       #   公開/管理で共用するカレンダー描画
+│  │  ├─ calendar.js       #   公開/管理で共用するカレンダー描画
+│  │  └─ otp-input.js      #   認証コード欄の全角→半角正規化（IME対策）
 │  ├─ hp.php ほか          #   デコイ（意図的な罠。後述「デコイページ」）
 │  └─ admin/               # 管理エリア（ログイン必須・共有ナビ）
 │     ├─ index.php         #     予約一覧・キャンセル（ダッシュボード）
 │     ├─ closures.php      #     特定日の休業/営業・個別の枠ふさぎ（カレンダー）
 │     ├─ slots.php         #     予約枠設定（営業時間/枠/定休日/休憩/祝日）
 │     ├─ mail.php          #     メール送信設定・テスト・デモモード
-│     ├─ account.php       #     管理アカウント（ID/パスワード/再設定先/2段階認証）
+│     ├─ stats.php         #     統計（月別/曜日別/時間帯別・リピート率）
+│     ├─ guide.php         #     使い方ガイド（お店の方向け・実設定値を反映）
+│     ├─ account.php       #     管理アカウント（ID/パスワード/再設定先/2段階認証＋QR）
 │     ├─ reset_request.php #     パスワード/ログインのリセット要求
 │     ├─ reset.php         #     リセットのリンク先（新PW設定・初期化）
 │     └─ _nav.php          #     共有ナビバー（各ページが include）
@@ -83,6 +86,7 @@ clinic-reservation/
 │  │  ├─ closures.php      #   休業・枠ふさぎモデル
 │  │  ├─ settings.php      #   設定（DB保存）
 │  │  ├─ view.php          #   共有レイアウト（head/foot の partial）
+│  │  ├─ qr.php            #   QRコード生成（純PHP・SVG出力。2段階認証の登録用）
 │  │  └─ honeypot.php      #   デコイの記録・自動ブロック（DB非依存の単独モジュール）
 │  ├─ auth/                #   auth.php  admin_guard.php  rate_limit.php  totp.php
 │  └─ mail/                #   notify.php  lib/PHPMailer/（※Git管理外。bash scripts/fetch-phpmailer.sh）
@@ -167,6 +171,8 @@ GitHub Actions でデプロイする場合、リポジトリの Secret **`ADMIN_
 
 - **総当たり対策**: ログイン失敗が続くと送信元IPを一時ロック（既定 5回/15分 → 15分）。成功で解除。
 - **2段階認証（TOTP・任意）**: 管理画面「アカウント」で有効化すると、ログイン時に認証アプリ（Google Authenticator 等）の6桁コードを要求。**リカバリコード**付き、緊急復旧（`config.php` の `FORCE_INITIAL_ADMIN`）で解除可。純PHP実装で追加ライブラリ不要。
+  - **セットアップQRコード**: 有効化時にQRを表示し、スマホのカメラで読み取って登録できます。QRの生成も**純PHPの自作実装**（`src/core/qr.php`・SVG出力）で、Composer も GD 拡張も不要。**秘密鍵を外部のQR生成APIへ渡さずに済む**ことが自前実装の狙いです。読み取れない環境向けに、従来のセットアップキー手入力と `otpauth://` リンクも折りたたみで残しています
+  - **認証コードの全角入力に対応**: PCでは日本語IMEが有効なまま6桁を打ってしまい、全角数字のまま送信されて弾かれることがあります。ブラウザ側（`public/assets/otp-input.js`）とサーバー側（`totp_normalize_input()`）の二重で半角へ正規化します。ログイン欄はリカバリコードも入るため英字とハイフンも許容
 
 ### 🪤 デコイページ（意図的な「罠」）
 
