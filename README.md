@@ -48,7 +48,7 @@
 | データベース | SQLite（`pdo_sqlite`） |
 | Webサーバー | Apache（開発は公式 `php:8.4-apache`） |
 | 開発環境 | Docker / docker compose |
-| メール（SMTP） | PHPMailer（MIT・取得スクリプトで導入。リポジトリには含めない） |
+| メール（SMTP） | PHPMailer（LGPL-2.1・取得スクリプトで導入。リポジトリには含めない） |
 
 ---
 
@@ -266,7 +266,11 @@ Issue や Pull Request を歓迎します。バグ報告・機能提案はお気
 ## 📄 ライセンス
 
 本プロジェクトは [MIT License](./LICENSE) のもとで公開されています。**商用・改変・再配布を含め、自由にご利用いただけます。**
-（同梱取得する PHPMailer も MIT License）
+
+Gmail送信に使う **PHPMailer は LGPL-2.1-only** で、本プロジェクトのライセンスとは別です。
+リポジトリには含めず、セットアップ／デプロイ時に `scripts/fetch-phpmailer.sh` が取得する方式のため、
+このリポジトリ自体は PHPMailer を再配布していません。PHPMailer を含んだ形で配布する場合は、
+LGPL-2.1 の条件（ライセンス文の同梱など）をご確認ください。
 
 ---
 

@@ -3,7 +3,10 @@
 # リポジトリには含めず、デプロイ時およびローカル初回セットアップ時に実行する。
 set -euo pipefail
 
-VER="v6.9.1"
+# 更新するときは、本番と同じ PHP バージョンで動作確認してから上げること。
+# 7.0.0 の BC break は lang()/setLanguage()/$language の static 化のみで、
+# PHPMailer を継承していない本プロジェクトには影響しない（確認済み）。
+VER="v7.1.1"
 DEST="$(cd "$(dirname "$0")/.." && pwd)/src/mail/lib/PHPMailer"
 BASE="https://raw.githubusercontent.com/PHPMailer/PHPMailer/${VER}/src"
 
