@@ -1,5 +1,5 @@
 # Oracle/本番用: clinic-reservation を /clinic-reservation/ サブパスで単体コンテナとして動かす。
-# onamaeデプロイ(.github/workflows/deploy.yml)の "Arrange on server" 処理をビルド時に再現する。
+# 旧デプロイ経路(.github/workflows/deploy.yml)の "Arrange on server" 処理をビルド時に再現する。
 # 目的: lab.4510.be/clinic-reservation/ で現行と同じ挙動（baseUrl・管理スラッグ・honeypot）を再現。
 # ⚠ FROM は変数展開せず**リテラルで書く**こと。Dependabot は FROM の変数を解釈できず、
 #   ARG 経由だと docker の更新PRが一本も来ない（2026-07-29 に実測して判明。同設定の
@@ -7,7 +7,7 @@
 #   8.4 固定で、変数にしている実益が無かったため撤去した。
 FROM php:8.5-apache
 
-# 管理画面の秘密スラッグ（偽装工作②）。空なら /admin/ のまま（Basic認証のみ）。
+# 管理画面の配置。空なら既定の場所のまま（Basic 認証のみ）。
 # 値は git 外・GitHub Secrets 外の VM 側 .env から compose 経由で渡す（露出防止）。
 ARG ADMIN_SLUG=""
 
@@ -25,17 +25,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
  && echo "date.timezone = Asia/Tokyo" > /usr/local/etc/php/conf.d/timezone.ini
 
 # docroot は既定の /var/www/html のまま。clinic は /clinic-reservation/ 配下に置く。
-# → URL /clinic-reservation/ = onamaeの docroot 直下と同じ相対構成になり、includeも一致する。
+# → URL /clinic-reservation/ = 旧経路の docroot 直下と同じ相対構成になり、include も一致する。
 WORKDIR /var/www/html/clinic-reservation
 
-# ソース配置（onamaeの「public 直下が docroot、その下に src/」を再現）
+# ソース配置（旧経路の「public 直下が docroot、その下に src/」を再現）
 COPY public/ ./
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 # holidays.csv はデータ扱いだが初期シードとして退避（volume が空なら entrypoint が配置）
 COPY data/holidays.csv /opt/seed/holidays.csv
 
-# PHPMailer（Gmail SMTP送信）をビルド時に取得（onamaeデプロイと同じ）
+# PHPMailer（Gmail SMTP送信）をビルド時に取得（旧経路と同じ）
 RUN bash ./scripts/fetch-phpmailer.sh
 
 # 非公開ディレクトリ拒否 + 管理画面スラッグ移設 + includeパス正規化（deploy.yml の Arrange 相当）
