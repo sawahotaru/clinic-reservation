@@ -6,6 +6,7 @@
 //   ?date=YYYY-MM-DD    … その日の枠を返す { date, capacity, closed, slots:[{time,remaining}] }
 require __DIR__ . '/../../src/core/db.php';
 require __DIR__ . '/../../src/core/functions.php';
+require_once __DIR__ . '/../../src/core/input.php';   // ?date[]=x のような配列注入を入口で潰す
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -16,7 +17,10 @@ $limit   = date('Y-m-d', time() + $cfg['window'] * 86400); // 予約可能な最
 
 // --- 単日: その日の枠一覧 ---
 if (isset($_GET['date'])) {
-    $date = (string)$_GET['date'];
+    // ⚠ (string)$_GET['date'] は配列だと "Array" + 警告になる。警告が出力に混ざると
+    //    JSON が壊れ、さらに header() を使う経路では "headers already sent" を誘発する。
+    //    get_str() で配列を空文字に落とし、下の正規表現で 400 として弾く。
+    $date = get_str('date');
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
         http_response_code(400);
         echo json_encode(['error' => 'bad date']);
@@ -34,7 +38,7 @@ if (isset($_GET['date'])) {
 }
 
 // --- 月単位: 各日の状態 ---
-$month = (string)($_GET['month'] ?? date('Y-m'));
+$month = get_str('month', date('Y-m'));
 if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
     $month = date('Y-m');
 }

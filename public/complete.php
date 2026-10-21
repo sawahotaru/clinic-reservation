@@ -1,10 +1,13 @@
 <?php
 require_once __DIR__ . '/../src/core/view.php';
-$id     = $_GET['id']   ?? '';
-$date   = $_GET['date'] ?? '';
-$time   = $_GET['time'] ?? '';
-$mailed = ($_GET['m'] ?? '') === '1';
-$demo   = ($_GET['demo'] ?? '') === '1';
+require_once __DIR__ . '/../src/core/input.php';   // ?id[]=x のような配列注入を入口で潰す
+
+// htmlspecialchars() に配列を渡すと TypeError で Fatal になるため、必ず文字列化する。
+$id     = get_str('id');
+$date   = get_str('date');
+$time   = get_str('time');
+$mailed = get_str('m')    === '1';
+$demo   = get_str('demo') === '1';
 ?>
 <?php page_head('予約完了 | サンプル整体院'); ?>
     <h1>ご予約が完了しました</h1>

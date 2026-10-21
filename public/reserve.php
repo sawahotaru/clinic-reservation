@@ -4,9 +4,13 @@ require __DIR__ . '/../src/core/functions.php';
 require __DIR__ . '/../src/core/reservations.php';
 require __DIR__ . '/../src/mail/notify.php';
 require_once __DIR__ . '/../src/core/view.php';
+require_once __DIR__ . '/../src/core/input.php';   // ?date[]=1 のような配列注入を入口で潰す
 
-$date  = $_REQUEST['date'] ?? '';
-$time  = $_REQUEST['time'] ?? '';
+// ⚠ req_str() を通すのは必須。?date[]=1&time=10:00 だと $_REQUEST['date'] が配列になり、
+//    下の preg_match() が TypeError で Fatal になっていた（未認証で再現可能）。
+//    配列で来たら空文字扱い＝「不正な日時」として index.php へ戻る、が正しい挙動。
+$date  = req_str('date');
+$time  = req_str('time');
 $error = '';
 
 $cfg = slotConfig($pdo);
@@ -50,9 +54,10 @@ if ($unavailable !== '') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name  = trim($_POST['name']  ?? '');
-    $phone = trim($_POST['phone'] ?? '');
-    $email = trim($_POST['email'] ?? '');
+    // 配列で POST されても trim() が TypeError にならないよう post_str() を挟む。
+    $name  = trim(post_str('name'));
+    $phone = trim(post_str('phone'));
+    $email = trim(post_str('email'));
 
     if ($name === '') {
         $error = 'お名前を入力してください。';
@@ -115,19 +120,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
       <label>お名前
         <input type="text" name="name" required
-               value="<?= htmlspecialchars($_POST['name'] ?? '') ?>">
+               value="<?= htmlspecialchars(post_str('name')) ?>">
       </label>
       <?php if ($contactReq === 'either'): ?>
         <p class="hint">電話番号またはメールアドレスの<strong>どちらか一方は必ず</strong>ご入力ください。</p>
       <?php endif; ?>
       <label>電話番号<?= (!$phoneRequired && $contactReq !== 'either') ? '（任意）' : '' ?>
         <input type="tel" name="phone" <?= $phoneRequired ? 'required' : '' ?>
-               value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
+               value="<?= htmlspecialchars(post_str('phone')) ?>">
       </label>
       <label>メールアドレス<?= (!$emailRequired && $contactReq !== 'either') ? '（任意）' : '' ?>
         <input type="email" name="email" <?= $emailRequired ? 'required' : '' ?>
                placeholder="入力すると確認メールが届きます"
-               value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
+               value="<?= htmlspecialchars(post_str('email')) ?>">
       </label>
 
       <button type="submit">この内容で予約する</button>

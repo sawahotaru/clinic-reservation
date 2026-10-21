@@ -1,9 +1,11 @@
 <?php
 require_once __DIR__ . '/../../src/core/db.php';   // $pdo, auth.php 読込済み
 require_once __DIR__ . '/../../src/core/view.php';
+require_once __DIR__ . '/../../src/core/input.php';   // ?token[]=x のような配列注入を入口で潰す
 
-$token   = $_GET['token'] ?? $_POST['token'] ?? '';
-$purpose = (($_GET['p'] ?? $_POST['p'] ?? 'password') === 'login') ? 'login' : 'password';
+// ⚠ 文字列化は必須。配列のまま checkToken() → hash() へ渡すと TypeError で Fatal になる。
+$token   = get_str('token', post_str('token'));
+$purpose = (get_str('p', post_str('p', 'password')) === 'login') ? 'login' : 'password';
 $error   = '';
 $done    = false;
 
@@ -12,8 +14,8 @@ $valid = checkToken($pdo, $token, $purpose);
 
 if ($valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($purpose === 'password' && ($_POST['action'] ?? '') === 'setpw') {
-        $p1 = $_POST['password']  ?? '';
-        $p2 = $_POST['password2'] ?? '';
+        $p1 = post_str('password');
+        $p2 = post_str('password2');
         if (strlen($p1) < 8) {
             $error = 'パスワードは8文字以上にしてください。';
         } elseif ($p1 !== $p2) {

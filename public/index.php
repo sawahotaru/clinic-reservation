@@ -2,9 +2,12 @@
 require __DIR__ . '/../src/core/db.php';
 require __DIR__ . '/../src/core/functions.php';
 require_once __DIR__ . '/../src/core/view.php';
+require_once __DIR__ . '/../src/core/input.php';   // ?date[]=x のような配列注入を入口で潰す
 
 // 日付を取得（未指定なら今日）。YYYY-MM-DD 以外は弾く。
-$date = $_GET['date'] ?? date('Y-m-d');
+// ⚠ get_str() を通すのは必須。?date[]=x だと $_GET['date'] が配列になり、
+//    preg_match() の第2引数が配列＝TypeError で Fatal になっていた（未認証で再現可能）。
+$date = get_str('date', date('Y-m-d'));
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
     $date = date('Y-m-d');
 }
@@ -16,7 +19,7 @@ $unavailableMsg = [
     'closed'  => 'ご希望の日は休診日です。別の日をお選びください。',
     'expired' => 'ご希望の枠は受付期間を過ぎています。別の日時をお選びください。',
     'invalid' => 'ご希望の枠は現在ご利用いただけません。下の空き状況からお選びください。',
-][$_GET['unavailable'] ?? ''] ?? '';
+][get_str('unavailable')] ?? '';   // 配列だと「不正な添字」で Fatal になるため get_str() 経由
 
 $cfg     = slotConfig($pdo);
 $closed  = isClosedDay($date, $cfg, dayOverride($pdo, $date));

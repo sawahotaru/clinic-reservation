@@ -5,6 +5,7 @@
 // 事前に db.php が読み込まれ $pdo / auth.php が利用可能であること。
 
 require_once __DIR__ . '/../core/view.php';
+require_once __DIR__ . '/../core/input.php';   // POST 値の配列注入を入口で潰す
 require_once __DIR__ . '/rate_limit.php';
 require_once __DIR__ . '/totp.php';
 
@@ -32,8 +33,10 @@ if (($_POST['action'] ?? '') === 'login') {
     if ($until = throttleLockedUntil($pdo, $tkey)) {
         $loginError = $lockMsg($until);
     } else {
-        $id   = $_POST['login_id'] ?? '';
-        $pass = $_POST['password'] ?? '';
+        // 配列で POST されても verifyLogin() 内の trim()/hash_equals() が
+        // TypeError にならないよう、ここで文字列に確定させる。
+        $id   = post_str('login_id');
+        $pass = post_str('password');
         if (verifyLogin($pdo, $id, $pass)) {
             if (twofaEnabled($pdo)) {
                 $_SESSION['twofa_pending'] = 1;   // 2段階目待ち（まだ管理者にしない）
@@ -54,7 +57,7 @@ if (($_POST['action'] ?? '') === 'twofa' && !empty($_SESSION['twofa_pending'])) 
     if ($until = throttleLockedUntil($pdo, $tkey)) {
         $loginError = $lockMsg($until);
     } else {
-        $code   = $_POST['code'] ?? '';
+        $code   = post_str('code');
         $secret = authGet($pdo, 'twofa_secret', '');
         if (totp_verify($secret, $code) || twofa_consume_recovery($pdo, $code)) {
             throttleReset($pdo, $tkey);
@@ -109,7 +112,7 @@ if (empty($_SESSION['admin'])):
       <input type="hidden" name="action" value="login">
       <label>ログインID（メールアドレス）
         <input type="email" name="login_id" required autocomplete="username"
-               value="<?= htmlspecialchars($_POST['login_id'] ?? '') ?>">
+               value="<?= htmlspecialchars(post_str('login_id')) ?>">
       </label>
       <label>パスワード
         <input type="password" name="password" required autocomplete="current-password">

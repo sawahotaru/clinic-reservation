@@ -1,8 +1,9 @@
 <?php
 require_once __DIR__ . '/../../src/core/db.php';   // $pdo, auth.php 読込済み
 require_once __DIR__ . '/../../src/core/view.php';
+require_once __DIR__ . '/../../src/core/input.php';   // ?p[]=x のような配列注入を入口で潰す
 
-$purpose = (($_GET['p'] ?? $_POST['p'] ?? 'password') === 'login') ? 'login' : 'password';
+$purpose = (get_str('p', post_str('p', 'password')) === 'login') ? 'login' : 'password';
 $title   = $purpose === 'login' ? 'ログイン情報のリセット' : 'パスワードの再設定';
 $sent    = false;
 
