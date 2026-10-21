@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/notify.php';
+require_once __DIR__ . '/../core/logfile.php';
 
 // ===== 来院前リマインダー =====
 //
@@ -162,10 +163,10 @@ function remindersTick(PDO $pdo): void
     try {
         sendDueReminders($pdo);
     } catch (Throwable $e) {
-        @file_put_contents(
+        log_append(
             __DIR__ . '/../../data/mail.log',
-            '[' . date('Y-m-d H:i:s') . "] type=reminder tick failed: " . $e->getMessage() . "\n",
-            FILE_APPEND
+            '[' . date('Y-m-d H:i:s') . '] type=reminder tick failed: '
+                . log_clip($e->getMessage(), 512) . "\n"
         );
     }
 }

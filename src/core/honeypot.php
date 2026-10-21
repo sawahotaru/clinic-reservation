@@ -17,12 +17,20 @@ if (defined('HONEYPOT_LOADED')) {
 }
 define('HONEYPOT_LOADED', true);
 
+// 追記ログの共通化（1行の長さ・ファイルサイズの上限とローテーション）。
+// honeypot.php の「DB にも他モジュールにも依存しない」原則は維持したいので、
+// logfile.php も同じく純 PHP・依存なしの単独モジュールにしてある。
+require_once __DIR__ . '/logfile.php';
+
 // --- 調整パラメータ -------------------------------------------------
 // 罠を HONEYPOT_TRIGGER 回踏んだら HONEYPOT_BLOCK_SECONDS 秒ブロックする。
 // カウントは HONEYPOT_WINDOW 秒アクセスが無ければリセット（無害な単発を残さない）。
 define('HONEYPOT_TRIGGER',       3);          // 何回で自動ブロックか
 define('HONEYPOT_WINDOW',        3600);       // カウント有効期間（秒）1時間
 define('HONEYPOT_BLOCK_SECONDS', 24 * 3600);  // ブロック継続時間（秒）24時間
+// ログ1項目あたりの最大バイト数。uri / ua / xff は攻撃者が長さを決められるため
+// 必ず切る。256 バイトあれば「何を狙ったか」「どのツールか」の判別には足りる。
+define('HONEYPOT_FIELD_MAX',     256);
 // -------------------------------------------------------------------
 
 function honeypot_data_dir(): string
@@ -53,6 +61,12 @@ function honeypot_read_json(string $path): array
 }
 
 // 1行 JSON をログへ追記（失敗しても本処理は止めない）
+//
+// ⚠ ここに載る値は**すべて攻撃者が長さを決められる**。
+//    uri は URL、ua / xff はリクエストヘッダで、Apache の LimitRequestFieldSize
+//    （既定 8190 バイト）いっぱいまで送れる。無加工で書いていた頃は
+//    1リクエストで約 16KB のログ行を作れた＝ログ自体が DoS の道具だった。
+//    log_clip() で 1 項目ずつ上限を掛け、log_append() でファイル全体にも上限を掛ける。
 function honeypot_log(string $label, array $extra = []): void
 {
     $dir = honeypot_data_dir();
@@ -61,15 +75,20 @@ function honeypot_log(string $label, array $extra = []): void
     }
     $entry = array_merge([
         'time'   => date('c'),
-        'label'  => $label,
+        'label'  => log_clip($label, 32),
         'ip'     => honeypot_client_ip(),
-        'method' => $_SERVER['REQUEST_METHOD'] ?? '',
-        'uri'    => $_SERVER['REQUEST_URI'] ?? '',
-        'ua'     => $_SERVER['HTTP_USER_AGENT'] ?? '',
-        'xff'    => $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '',
+        'method' => log_clip((string)($_SERVER['REQUEST_METHOD'] ?? ''), 16),
+        'uri'    => log_clip((string)($_SERVER['REQUEST_URI'] ?? ''), HONEYPOT_FIELD_MAX),
+        'ua'     => log_clip((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), HONEYPOT_FIELD_MAX),
+        'xff'    => log_clip((string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''), HONEYPOT_FIELD_MAX),
     ], $extra);
-    $line = json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
-    @file_put_contents($dir . '/honeypot.log', $line, FILE_APPEND | LOCK_EX);
+    // ⚠ JSON_INVALID_UTF8_SUBSTITUTE は必須。UA は不正な UTF-8 で届くことがあり、
+    //    これが無いと json_encode が false を返して空行だけが残る（記録の取りこぼし）。
+    $json = json_encode(
+        $entry,
+        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+    );
+    log_append($dir . '/honeypot.log', ($json === false ? '{"error":"encode"}' : $json) . "\n");
 }
 
 // 罠を踏んだIPのカウントを進め、閾値を超えたら時限ブロックに昇格させる
@@ -146,15 +165,25 @@ function honeypot_captured_creds(): array
     $out = [];
     foreach (['log', 'pwd', 'username', 'user', 'login', 'login_id', 'password', 'passwd', 'email'] as $k) {
         if (isset($_POST[$k]) && $_POST[$k] !== '') {
-            $out[$k] = mb_substr((string)$_POST[$k], 0, 128); // 過大入力を切り詰め
+            // mb_substr だと「128 文字」＝UTF-8 で最大 512 バイト。ログのバイト数を
+            // 見積もれるよう、他の項目と同じ log_clip（バイト単位）に揃える。
+            $out[$k] = log_clip(is_string($_POST[$k]) ? $_POST[$k] : '(non-string)', 128);
         }
     }
     return $out;
 }
 
 // 罠の本体。デコイ用スタブから呼ぶ。記録 → 昇格 → それっぽい偽レスポンス → 終了。
+//
+// ⚠ 最初に honeypot_shield() を通すこと。デコイ（/wp-login.php 等）はこれまで
+//    shield を呼んでいなかったため、**ブロック済みIPでも罠だけは何度でも叩けた**。
+//    1回叩くたびにログが1行伸びるので、ブロックしたはずの相手が
+//    そのままログを太らせ続けられる状態だった（本物のページは 403 なのに罠は開いている）。
+//    ここで弾けばデコイも本物と同じ扱いになり、1箇所の修正で全デコイに効く。
 function honeypot_trap(string $label): void
 {
+    honeypot_shield();
+
     $creds = honeypot_captured_creds();
     honeypot_log($label, $creds ? ['creds' => $creds] : []);
     honeypot_escalate(honeypot_client_ip());

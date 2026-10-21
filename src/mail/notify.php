@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../core/settings.php';
+require_once __DIR__ . '/../core/logfile.php';   // mail.log のサイズ上限とローテーション
 
 // ===== 予約通知メール =====
 // 送信方法は管理画面の設定（settings）に従う:
@@ -78,7 +79,7 @@ function sendMail(array $s, string $to, string $subject, string $body, ?string $
         $log = str_repeat('=', 50) . "\n"
             . '[' . date('Y-m-d H:i:s') . "] type={$type} method={$method} to={$to} sent=DEMO(未送信)\n"
             . "Subject: {$subject}\n\n" . $body . "\n";
-        @file_put_contents(__DIR__ . '/../../data/mail.log', $log, FILE_APPEND);
+        log_append(__DIR__ . '/../../data/mail.log', $log);
         return [true, ''];
     }
 
@@ -90,7 +91,9 @@ function sendMail(array $s, string $to, string $subject, string $body, ?string $
         . '[' . date('Y-m-d H:i:s') . "] type={$type} method={$method} to={$to} sent="
         . ($ok ? 'OK' : 'NG') . ($err ? " err={$err}" : '') . "\n"
         . "Subject: {$subject}\n\n" . $body . "\n";
-    @file_put_contents(__DIR__ . '/../../data/mail.log', $log, FILE_APPEND);
+    // ⚠ 上限なしの追記はしない。mail.log はデモモードだと「送れば送るだけ」伸び、
+    //    data/ が満杯になると SQLite の書き込みが落ちて予約システムごと止まる。
+    log_append(__DIR__ . '/../../data/mail.log', $log);
 
     return [$ok, $err];
 }
