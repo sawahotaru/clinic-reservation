@@ -21,3 +21,7 @@ RUN mkdir -p /var/www/html/data \
 
 # タイムゾーン（PHP）を日本に
 RUN echo "date.timezone = Asia/Tokyo" > /usr/local/etc/php/conf.d/timezone.ini
+
+# php2shell (CVE-2026-109618 / CVE-2026-109619) 緩和。詳細は docker/hardening.ini 内のコメント。
+COPY docker/hardening.ini /usr/local/etc/php/conf.d/zz-hardening.ini
+

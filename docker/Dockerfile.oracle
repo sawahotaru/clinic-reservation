@@ -24,6 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
  && sed -ri 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
  && echo "date.timezone = Asia/Tokyo" > /usr/local/etc/php/conf.d/timezone.ini
 
+# php2shell (CVE-2026-109618 / CVE-2026-109619) 緩和。詳細は docker/hardening.ini 内のコメント。
+COPY docker/hardening.ini /usr/local/etc/php/conf.d/zz-hardening.ini
+
+
 # docroot は既定の /var/www/html のまま。clinic は /clinic-reservation/ 配下に置く。
 # → URL /clinic-reservation/ = 旧経路の docroot 直下と同じ相対構成になり、include も一致する。
 WORKDIR /var/www/html/clinic-reservation
