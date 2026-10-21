@@ -9,6 +9,16 @@ APP=/var/www/html/clinic-reservation
 DATA="$APP/data"
 mkdir -p "$DATA"
 
+# ⚠ data/ の拒否は**起動時に書く**こと。ビルド時（Dockerfile.oracle）にも置いているが、
+#    compose の bind マウント（./clinic-data:…/data）がディレクトリごと覆い隠すため、
+#    イメージ内の .htaccess は実行時には存在しない。
+#    2026-10-22、これが原因で data/ が全世界に公開されており、予約DB(database.sqlite)が
+#    認証なしで取得できる状態だった。data/ は docroot の内側にあるので .htaccess が唯一の防壁。
+#    （経路側の Caddy でも /clinic-reservation/data/* を 404 にしている。二重化は意図的）
+echo "Require all denied" > "$DATA/.htaccess"
+chmod 644 "$DATA/.htaccess"
+
+
 # holidays.csv の初期シード（永続ボリュームが空の初回のみ）
 if [ ! -f "$DATA/holidays.csv" ] && [ -f /opt/seed/holidays.csv ]; then
   cp /opt/seed/holidays.csv "$DATA/holidays.csv"
