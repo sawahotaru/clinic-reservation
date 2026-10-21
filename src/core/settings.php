@@ -1,4 +1,6 @@
 <?php
+// 秘密項目（SMTPパスワード等）の暗号化。getSettings / saveSettings から使う。
+require_once __DIR__ . '/secrets.php';
 // ===== 設定（DB保存・管理画面から編集） =====
 // 店名・通知先メール・送信方法などを settings テーブルに保存する。
 // 管理画面の「設定」ページから編集できる（ファイルを触らなくてよい）。
@@ -63,7 +65,16 @@ function ensureSettings(PDO $pdo): void
 function getSettings(PDO $pdo): array
 {
     $rows = $pdo->query('SELECT key, value FROM settings')->fetchAll(PDO::FETCH_KEY_PAIR);
-    return array_merge(settingDefaults(), $rows ?: []);
+    $all  = array_merge(settingDefaults(), $rows ?: []);
+
+    // 秘密の項目は保存時に暗号化してある。呼び出し側は平文を受け取る前提なので
+    // ここで戻す。旧データ（平文）はそのまま返るので、移行前でも動く。
+    foreach (secretSettingKeys() as $k) {
+        if (isset($all[$k])) {
+            $all[$k] = decryptSecret((string)$all[$k]);
+        }
+    }
+    return $all;
 }
 
 /** 設定を保存（既知のキーのみ。upsert） */
@@ -76,7 +87,12 @@ function saveSettings(PDO $pdo, array $values): void
     );
     foreach ($values as $k => $v) {
         if (array_key_exists($k, $allowed)) {
-            $stmt->execute([$k, (string)$v]);
+            $v = (string)$v;
+            // 秘密の項目は平文でDBに置かない（DBファイルごと持ち出されたときのため）。
+            if (in_array($k, secretSettingKeys(), true)) {
+                $v = encryptSecret($v);
+            }
+            $stmt->execute([$k, $v]);
         }
     }
 }
