@@ -182,6 +182,12 @@ GitHub Actions でデプロイする場合、リポジトリの Secret **`ADMIN_
 
 不要なら `public/` からデコイのファイル／ディレクトリを削除するだけで無効化できます（本体の動作には影響しません）。
 
+### 📤 ファイルアップロードは受け付けません（前段で 415）
+
+このアプリは**受信アップロードを一切持ちません**（`$_FILES` / `move_uploaded_file` / `enctype` を使っていません）。そのため本番（lab）では**前段のリバースプロキシ（Caddy）が `multipart/form-data` のリクエストを丸ごと `415 Unsupported Media Type` で落とします**。加えて `docker/hardening.ini` で `file_uploads = Off` にしています（※こちらはファイル保存を抑止するだけで、PHP の multipart パーサ自体は動きます）。
+
+⚠️ **将来アップロード機能を足す場合**は、アプリ側だけ直しても動きません。前段の設定（lab 環境では `oracle-lab` リポジトリの `Caddyfile` の `@multipart`）と `docker/hardening.ini` を**同時に**直す必要があります。直し忘れると、本番では原因不明の **415**、clinic 単体の Docker では **`$_FILES` が黙って空**という、環境ごとに違う症状になります。
+
 ---
 
 ## ✉️ メール送信
