@@ -6,14 +6,18 @@
 
 require_once __DIR__ . '/../core/view.php';
 require_once __DIR__ . '/../core/input.php';   // POST 値の配列注入を入口で潰す
+require_once __DIR__ . '/session.php';         // Cookie 属性 / ID 打ち直し / CSRF
 require_once __DIR__ . '/rate_limit.php';
 require_once __DIR__ . '/totp.php';
 
-session_start();
+// ⚠ 素の session_start() は使わないこと。HttpOnly / Secure / SameSite が
+//    既定（全部オフ）のまま開いてしまう。属性は session_boot() が付ける。
+session_boot();
 
 // ログアウト
 if (($_GET['logout'] ?? '') === '1') {
-    session_destroy();
+    // session_destroy() だけでは $_SESSION も Cookie も残る。3点セットで消す。
+    session_logout();
     $self = strtok($_SERVER['REQUEST_URI'], '?');
     header('Location: ' . $self);
     exit;
@@ -37,7 +41,14 @@ if (($_POST['action'] ?? '') === 'login') {
         // TypeError にならないよう、ここで文字列に確定させる。
         $id   = post_str('login_id');
         $pass = post_str('password');
-        if (verifyLogin($pdo, $id, $pass)) {
+        if (!csrf_valid()) {
+            // ログインフォームにもトークンを載せている。画面を開きっぱなしで
+            // セッションが切れた場合もここに来るので、403 ではなく再入力を促す。
+            $loginError = '送信が無効になりました。お手数ですが、もう一度入力してください。';
+        } elseif (verifyLogin($pdo, $id, $pass)) {
+            // ⚠ 権限が上がる瞬間にセッションIDを打ち直す（session fixation 対策）。
+            //    2段階目待ちの状態も「未ログインより強い状態」なので、ここでも回す。
+            session_rotate();
             if (twofaEnabled($pdo)) {
                 $_SESSION['twofa_pending'] = 1;   // 2段階目待ち（まだ管理者にしない）
             } else {
@@ -59,8 +70,14 @@ if (($_POST['action'] ?? '') === 'twofa' && !empty($_SESSION['twofa_pending'])) 
     } else {
         $code   = post_str('code');
         $secret = authGet($pdo, 'twofa_secret', '');
-        if (totp_verify($secret, $code) || twofa_consume_recovery($pdo, $code)) {
+        if (!csrf_valid()) {
+            $loginError = '送信が無効になりました。お手数ですが、もう一度入力してください。';
+        } elseif (totp_verify($secret, $code) || twofa_consume_recovery($pdo, $code)) {
             throttleReset($pdo, $tkey);
+            // ⚠ ここでも打ち直す。2FA を通って初めて管理者になるので、
+            //    「パスワード認証だけ通った状態の ID」を管理者セッションとして
+            //    使い回させない。権限が変わるたびに回す、が原則。
+            session_rotate();
             unset($_SESSION['twofa_pending']);
             $_SESSION['admin'] = true;
         } else {
@@ -85,6 +102,7 @@ if (empty($_SESSION['admin']) && !empty($_SESSION['twofa_pending'])):
     <?php if ($loginError): ?><p class="error"><?= htmlspecialchars($loginError) ?></p><?php endif; ?>
     <p class="hint">認証アプリに表示される<strong>6桁のコード</strong>を入力してください。</p>
     <form method="post" class="reserve-form">
+      <?php csrf_field(); ?>
       <input type="hidden" name="action" value="twofa">
       <label>認証コード
         <input type="text" name="code" class="otp-input" inputmode="numeric"
@@ -102,6 +120,17 @@ if (empty($_SESSION['admin']) && !empty($_SESSION['twofa_pending'])):
     exit;
 endif;
 
+// ===== ここから先は「ログイン済みの管理者」だけが通る =====
+// 管理画面の状態変更はすべて POST で、各ページは必ずこの admin_guard を
+// 通ってから自前の POST 処理に入る。だから CSRF の検査はここ1箇所で足りる
+// （ページごとに書くと、新しい画面を足したときに付け忘れる）。
+//
+// ⚠ Basic 認証は CSRF の防壁にならない。ブラウザが勝手に付けるので、
+//    罠サイトからの POST にも認証情報が同伴する。トークンが要る理由はこれ。
+if (!in_array($_POST['action'] ?? '', ['login', 'twofa'], true)) {
+    csrf_require();
+}
+
 // 未ログインならログイン画面を表示して終了
 if (empty($_SESSION['admin'])):
 ?>
@@ -109,6 +138,7 @@ if (empty($_SESSION['admin'])):
     <h1>管理ログイン</h1>
     <?php if ($loginError): ?><p class="error"><?= htmlspecialchars($loginError) ?></p><?php endif; ?>
     <form method="post" class="reserve-form">
+      <?php csrf_field(); ?>
       <input type="hidden" name="action" value="login">
       <label>ログインID（メールアドレス）
         <input type="email" name="login_id" required autocomplete="username"

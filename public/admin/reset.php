@@ -2,6 +2,13 @@
 require_once __DIR__ . '/../../src/core/db.php';   // $pdo, auth.php 読込済み
 require_once __DIR__ . '/../../src/core/view.php';
 require_once __DIR__ . '/../../src/core/input.php';   // ?token[]=x のような配列注入を入口で潰す
+require_once __DIR__ . '/../../src/auth/session.php'; // Cookie 属性 + CSRF
+
+// この画面は未ログインで開く（メールのリンクから来る）ため admin_guard を通らない。
+// 実行の鍵はメールで配った使い捨てトークンだが、CSRF トークンも併せて要求する。
+// 「リンクを踏ませる」より「ログイン中の管理者に踏ませる」方が現実的な攻撃なので、
+// 二重にしておく（トークンが漏れた場合の保険にもなる）。
+session_boot();
 
 // ⚠ 文字列化は必須。配列のまま checkToken() → hash() へ渡すと TypeError で Fatal になる。
 $token   = get_str('token', post_str('token'));
@@ -13,6 +20,7 @@ $done    = false;
 $valid = checkToken($pdo, $token, $purpose);
 
 if ($valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_require();
     if ($purpose === 'password' && ($_POST['action'] ?? '') === 'setpw') {
         $p1 = post_str('password');
         $p2 = post_str('password2');
@@ -56,6 +64,7 @@ if ($valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
       <h1>ログイン情報のリセット</h1>
       <p>実行すると、<strong>ログインIDとパスワードがサーバー上の初期値に戻ります</strong>。よろしいですか？</p>
       <form method="post" class="reserve-form">
+        <?php csrf_field(); ?>
         <input type="hidden" name="action" value="resetlogin">
         <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
         <input type="hidden" name="p" value="login">
@@ -66,6 +75,7 @@ if ($valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
       <h1>新しいパスワードの設定</h1>
       <?php if ($error): ?><p class="error"><?= htmlspecialchars($error) ?></p><?php endif; ?>
       <form method="post" class="reserve-form">
+        <?php csrf_field(); ?>
         <input type="hidden" name="action" value="setpw">
         <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
         <input type="hidden" name="p" value="password">

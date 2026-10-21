@@ -2,12 +2,19 @@
 require_once __DIR__ . '/../../src/core/db.php';   // $pdo, auth.php 読込済み
 require_once __DIR__ . '/../../src/core/view.php';
 require_once __DIR__ . '/../../src/core/input.php';   // ?p[]=x のような配列注入を入口で潰す
+require_once __DIR__ . '/../../src/auth/session.php'; // Cookie 属性 + CSRF
+
+// 未ログインで開く画面なので admin_guard を通らない。トークンが無いと
+// 「罠ページを踏ませるだけでリセットメールを何通でも送らせる」ことができる
+// （本文にリセットリンクが入るので、受信箱を汚すだけでは済まない）。
+session_boot();
 
 $purpose = (get_str('p', post_str('p', 'password')) === 'login') ? 'login' : 'password';
 $title   = $purpose === 'login' ? 'ログイン情報のリセット' : 'パスワードの再設定';
 $sent    = false;
 
 if (($_POST['action'] ?? '') === 'request') {
+    csrf_require();
     // トークン発行 → 初期メール宛にリンク送信（成否に関わらず同じ表示＝情報を漏らさない）
     $token = issueToken($pdo, $purpose);
     $url   = baseUrl() . '/reset.php?token=' . $token . '&p=' . $purpose;
@@ -32,6 +39,7 @@ if (($_POST['action'] ?? '') === 'request') {
         <p>登録メールアドレスに、パスワード再設定用のリンクを送ります。</p>
       <?php endif; ?>
       <form method="post" class="reserve-form">
+        <?php csrf_field(); ?>
         <input type="hidden" name="action" value="request">
         <input type="hidden" name="p" value="<?= htmlspecialchars($purpose) ?>">
         <button type="submit">登録メールにリンクを送る</button>

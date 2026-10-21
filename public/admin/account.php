@@ -86,6 +86,7 @@ $navTitle  = '管理アカウント';
     <?php endif; ?>
 
     <form method="post" class="reserve-form">
+      <?php csrf_field(); ?>
       <input type="hidden" name="action" value="account">
       <label>ログインID（メールアドレス）
         <input type="email" name="login_id" value="<?= htmlspecialchars($curId) ?>">
@@ -144,6 +145,7 @@ $navTitle  = '管理アカウント';
         古いほうの数字を入れて「認証コードが違います」になります）。
       </div>
       <form method="post" onsubmit="return confirm('2段階認証を無効にします。\n\nもう一度有効にするときは新しい鍵が作り直され、認証アプリへの登録とリカバリコードの控えをやり直すことになります。\n（そのときアプリの古い登録は削除してください）\n\n無効にしますか？');">
+        <?php csrf_field(); ?>
         <input type="hidden" name="action" value="twofa_disable">
         <button type="submit" class="danger">2段階認証を無効にする</button>
       </form>
@@ -190,6 +192,7 @@ $navTitle  = '管理アカウント';
         </details>
       <?php endif; ?>
       <form method="post" class="reserve-form">
+        <?php csrf_field(); ?>
         <input type="hidden" name="action" value="twofa_confirm">
         <label>認証コード（6桁）
           <input type="text" name="code" class="otp-input" data-otp="digits"
@@ -202,6 +205,7 @@ $navTitle  = '管理アカウント';
     <?php else: ?>
       <p class="info">状態: <strong>無効</strong>。パスワードに加えて認証アプリの6桁コードを要求します（推奨）。</p>
       <form method="post">
+        <?php csrf_field(); ?>
         <input type="hidden" name="action" value="twofa_start">
         <button type="submit">2段階認証を有効化する</button>
       </form>

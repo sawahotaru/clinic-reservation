@@ -171,6 +171,7 @@ $navTitle  = '予約枠設定';
 
     <p class="hint">空き枠はこのルールから<strong>自動計算</strong>されます（枠を1つずつ登録する必要はありません）。特定日の休業・営業は <a href="closures.php">休業・枠</a> で指定します。</p>
     <form method="post" class="reserve-form">
+      <?php csrf_field(); ?>
       <input type="hidden" name="action" value="slots">
 
       <fieldset class="field-group">

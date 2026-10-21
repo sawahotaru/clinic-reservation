@@ -89,6 +89,7 @@ $navTitle  = 'メール設定';
     <?php endif; ?>
 
     <form method="post" class="reserve-form">
+      <?php csrf_field(); ?>
       <input type="hidden" name="action" value="save">
 
       <label>店名
@@ -201,12 +202,14 @@ $navTitle  = 'メール設定';
     </form>
 
     <form method="post" class="test-form">
+      <?php csrf_field(); ?>
       <input type="hidden" name="action" value="test">
       <button type="submit" class="secondary">現在の設定でテスト送信</button>
       <span class="hint">「通知先メール」宛に1通送って、届くか確認できます（保存後に実行）。</span>
     </form>
 
     <form method="post" class="test-form">
+      <?php csrf_field(); ?>
       <input type="hidden" name="action" value="remind">
       <button type="submit" class="secondary">お知らせメールを今すぐ送る</button>
       <span class="hint">

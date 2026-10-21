@@ -44,6 +44,7 @@ $navTitle  = '予約一覧';
               <td><?= htmlspecialchars($r['created_at']) ?></td>
               <td>
                 <form method="post" onsubmit="return confirm('この予約をキャンセルしますか？');">
+                  <?php csrf_field(); ?>
                   <input type="hidden" name="action" value="cancel">
                   <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                   <button type="submit" class="danger">キャンセル</button>

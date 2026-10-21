@@ -57,6 +57,7 @@ $navTitle  = '休業・枠ふさぎ';
     </p>
 
     <form method="post" class="reserve-form" id="dayset-form">
+      <?php csrf_field(); ?>
       <input type="hidden" name="action" value="dayset">
       <input type="hidden" name="day_date" id="dayset-date" required>
       <div class="cal" data-cal="dayset" data-marks='<?= htmlspecialchars(json_encode($overrideMarks), ENT_QUOTES) ?>'></div>
@@ -81,6 +82,7 @@ $navTitle  = '休業・枠ふさぎ';
                     : '<span class="badge-closed">休業</span>' ?></td>
               <td>
                 <form method="post" onsubmit="return confirm('この指定を解除しますか？');">
+                  <?php csrf_field(); ?>
                   <input type="hidden" name="action" value="dayunset">
                   <input type="hidden" name="date" value="<?= htmlspecialchars($o['date']) ?>">
                   <button type="submit" class="danger">解除</button>
@@ -100,6 +102,7 @@ $navTitle  = '休業・枠ふさぎ';
     <p class="hint">開いている日の中で、特定の<strong>枠だけ</strong>を埋めて予約不可にします（電話予約が入った枠など）。複数選択できます。</p>
 
     <form method="post" class="reserve-form" id="block-form">
+      <?php csrf_field(); ?>
       <input type="hidden" name="action" value="block">
       <input type="hidden" name="block_date" id="block-date" required>
       <div class="cal" data-cal="block" data-marks='<?= htmlspecialchars(json_encode($blockMarks), ENT_QUOTES) ?>'></div>
@@ -126,6 +129,7 @@ $navTitle  = '休業・枠ふさぎ';
               <td><?= htmlspecialchars($b['time']) ?></td>
               <td>
                 <form method="post" onsubmit="return confirm('この枠ふさぎを解除しますか？');">
+                  <?php csrf_field(); ?>
                   <input type="hidden" name="action" value="unblock">
                   <input type="hidden" name="id" value="<?= (int)$b['id'] ?>">
                   <button type="submit" class="danger">解除</button>

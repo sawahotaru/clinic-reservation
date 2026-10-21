@@ -87,8 +87,10 @@ clinic-reservation/
 │  │  ├─ settings.php      #   設定（DB保存）
 │  │  ├─ view.php          #   共有レイアウト（head/foot の partial）
 │  │  ├─ qr.php            #   QRコード生成（純PHP・SVG出力。2段階認証の登録用）
+│  │  ├─ input.php         #   外部入力の型ガード（?date[]=x の配列注入を入口で潰す）
+│  │  ├─ logfile.php       #   追記ログの上限・ローテーション（honeypot.log / mail.log）
 │  │  └─ honeypot.php      #   デコイの記録・自動ブロック（DB非依存の単独モジュール）
-│  ├─ auth/                #   auth.php  admin_guard.php  rate_limit.php  totp.php
+│  ├─ auth/                #   auth.php  admin_guard.php  session.php  rate_limit.php  totp.php
 │  └─ mail/                #   notify.php  lib/PHPMailer/（※Git管理外。bash scripts/fetch-phpmailer.sh）
 ├─ data/                   # DB実体・holidays.csv・ログ（公開フォルダ外・自動生成）
 ├─ docker/Dockerfile
@@ -174,6 +176,19 @@ GitHub Actions でデプロイする場合、リポジトリの Secret **`ADMIN_
   - **セットアップQRコード**: 有効化時にQRを表示し、スマホのカメラで読み取って登録できます。QRの生成も**純PHPの自作実装**（`src/core/qr.php`・SVG出力）で、Composer も GD 拡張も不要。**秘密鍵を外部のQR生成APIへ渡さずに済む**ことが自前実装の狙いです。読み取れない環境向けに、従来のセットアップキー手入力と `otpauth://` リンクも折りたたみで残しています
   - **認証コードの全角入力に対応**: PCでは日本語IMEが有効なまま6桁を打ってしまい、全角数字のまま送信されて弾かれることがあります。ブラウザ側（`public/assets/otp-input.js`）とサーバー側（`totp_normalize_input()`）の二重で半角へ正規化します。ログイン欄はリカバリコードも入るため英字とハイフンも許容
 
+### 🛡 セッションと CSRF
+
+- **CSRF トークン**: 管理画面の状態を変える POST は**すべて**ワンセッション1本のトークンを要求します。検査は `src/auth/admin_guard.php` の1箇所（全管理ページがここを通る）で行うので、画面を追加しても付け忘れが起きません。未ログインで開く `reset.php` / `reset_request.php` は自前で `csrf_require()` を呼びます。
+  - ⚠️ **Basic 認証は CSRF の防壁になりません。** ブラウザが自動で資格情報を付けるため、罠サイトからの POST にも同伴します。別レイヤの対策が要ります。
+- **Cookie 属性**: `HttpOnly` ／ `SameSite=Lax` ／ HTTPS のときだけ `Secure`（ローカルは HTTP なので自動で外れる）。パスは管理ディレクトリ配下に限定し、同じホストの他アプリへ送られないようにしています。HTTPS かどうかは前段が付ける `X-Forwarded-Proto` で判定します。
+- **セッションID の打ち直し**: パスワード認証を通った時と2段階認証を通った時の**両方**で `session_regenerate_id(true)`（session fixation 対策）。ログアウトは `$_SESSION` のクリア・Cookie の失効・`session_destroy()` の3点セット。
+
+### 🧾 エラー表示とログ
+
+- **画面にエラーを出しません**（`display_errors = Off`）。代わりに `log_errors = On` ＋ `error_log = /proc/self/fd/2` でコンテナの標準エラーへ出すので `docker compose logs` で読めます。「出さない」と「記録しない」は別物で、記録を止めると攻撃の痕跡が残りません。`expose_php = Off` で `X-Powered-By` も消します（設定は `docker/hardening.ini`）。
+- **外部入力は入口で型を確定**させます（`src/core/input.php`）。`?date[]=x` のように配列を渡されると `preg_match()` / `trim()` が TypeError になり、Fatal → 出力開始 → 後続の `header()` が効かない、という連鎖で**リダイレクトで守っている経路まで壊れる**ためです。
+- **ログは無制限に太りません**（`src/core/logfile.php`）。`honeypot.log` は攻撃者が UA / URI の長さを決められるので1項目256バイトで切り、ファイルが2MBを超えたら1世代だけ `.1` へ退避します。`mail.log` も同じ扱いです。ログで `data/` を埋められると SQLite の書き込みが落ち、予約システムが止まります。
+
 ### 🪤 デコイページ（意図的な「罠」）
 
 `public/` の中に `wp-login.php` / `xmlrpc.php` / `wp-admin/` / `administrator/` / `phpmyadmin/` があります。**これは WordPress の残骸ではなく、意図的に置いたデコイ**です。このアプリは WordPress を一切使っていません。
@@ -181,6 +196,8 @@ GitHub Actions でデプロイする場合、リポジトリの Secret **`ADMIN_
 自動化された攻撃ツールは、まずこうした「定番パス」を総当たりで探します。デコイはそのアクセスを記録し、繰り返す相手を一定時間ブロックします。実装は **DB に依存しない単独モジュール `src/core/honeypot.php`** で、書き込み可能な `data/` さえあれば動くため、レンタルサーバーへそのまま持ち込めます。
 
 不要なら `public/` からデコイのファイル／ディレクトリを削除するだけで無効化できます（本体の動作には影響しません）。
+
+> ⚠️ **自動ブロックは送信元IPが正しく取れていることが前提**です。本番は Cloudflare → Caddy → Apache の3段なので、`docker/Dockerfile.oracle` の `RemoteIPTrustedProxy` に **Cloudflare のレンジまで**登録して、`REMOTE_ADDR` を実クライアントIPに戻しています。ここが抜けていると `REMOTE_ADDR` が「毎回変わる Cloudflare エッジIP」になり、デコイの自動ブロックもログインの試行回数制限も**静かに効かなくなります**（逆に当たった場合は、その PoP を通る利用者が巻き添えで 403 になります）。一覧は `oracle-lab` の `Caddyfile` の `trusted_proxies` と同じもので、**更新するときは両方同時に**直してください。
 
 ### 📤 ファイルアップロードは受け付けません（前段で 415）
 
