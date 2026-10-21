@@ -15,11 +15,54 @@ ARG ADMIN_SLUG=""
 # ※ AllowOverride None のままだと Basic認証/Require denied の .htaccess が無視され重大な穴になる。
 # ※ mod_remoteip: リバースプロキシ(Caddy)配下でも REMOTE_ADDR を実クライアントIPに復元する。
 #    → clinic の honeypot（REMOTE_ADDR でIP記録/自動ブロック）が「全員=プロキシIP」で自滅するのを防ぐ。
-#    PHPコードは変更不要（REMOTE_ADDR の値が正しくなるだけ）。信頼するのは内部/プロキシの私設レンジのみ。
+#    PHPコードは変更不要（REMOTE_ADDR の値が正しくなるだけ）。
+#
+#    ⚠ 2026-10-22: 信頼レンジが「Docker 内部の私設レンジだけ」では足りないことが判明した。
+#    本番の経路は Cloudflare → Caddy → このコンテナ。Apache に届く XFF は
+#        <本当のクライアントIP>, <Cloudflare エッジIP>
+#    という2段になる（Cloudflare が左に実IPを積み、Caddy が右に「自分から見た相手」＝
+#    Cloudflare エッジIPを足す）。mod_remoteip は XFF を**右から**辿り、信頼レンジに
+#    入っている間は飛ばし、最初に出会った非信頼IPを REMOTE_ADDR にする。
+#    Cloudflare エッジ（例 172.70.49.208 / 172.71.24.146。いずれも 172.16.0.0/12 の**外**）が
+#    信頼リストに無かったため、そこで止まって REMOTE_ADDR = Cloudflare エッジIP になっていた。
+#    しかもエッジIPは同じ利用者でもリクエストごとに変わる（本番 honeypot.log で実証済み）。
+#
+#    結果、REMOTE_ADDR を鍵にしている防御が両方とも実質無効だった:
+#      - honeypot_escalate() の「3回/1h で自動ブロック」… カウントが散って閾値に届かない
+#      - src/auth/rate_limit.php の throttleKey() … 管理ログインの 5回/15分ロックアウトが効かない
+#    逆に一度でも発動すると、honeypot_shield() は db.php 冒頭で全ページに掛かるため
+#    **その PoP を通る正規利用者が全員サイト全体で24時間 403** になる（巻き込み事故）。
+#
+#    → Cloudflare の公開レンジを信頼プロキシに追加する。右から「Caddy(docker私設レンジ)
+#      → Cloudflare エッジ」と飛ばして、その左にある実クライアントIPへ到達できる。
+#
+#    ⚠ 詐称できないか: クライアントが勝手に XFF を付けても、Cloudflare はそれを左へ押しやって
+#      自分が見た実IPを右に足す。詐称値は必ず実IPより左に来るので、右から辿る mod_remoteip は
+#      そこへ到達しない。XFF を信じること自体は「どこまで信頼するか」を正しく書けば安全。
+#    ⚠ この一覧は oracle-lab/Caddyfile の trusted_proxies と**同じもの**。Cloudflare が
+#      レンジを更新したら両方同時に直すこと（https://www.cloudflare.com/ips/）。
+#      片方だけでは意味が無い（Caddy 側が XFF の積み方、Apache 側が読み方を決めている）。
+#    ⚠ Caddy の無い設置（onamae 等）へ持ち込む場合、前段が XFF を付けないなら
+#      この設定は何もしない（REMOTE_ADDR はそのまま）。害は無いが、効いてもいない。
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/* \
  && a2enmod rewrite remoteip \
- && printf 'RemoteIPHeader X-Forwarded-For\nRemoteIPTrustedProxy 10.0.0.0/8\nRemoteIPTrustedProxy 172.16.0.0/12\nRemoteIPTrustedProxy 192.168.0.0/16\n' > /etc/apache2/conf-available/remoteip.conf \
+ && { \
+      echo 'RemoteIPHeader X-Forwarded-For'; \
+      echo '# Docker 内部ネットワーク（前段の Caddy コンテナ）'; \
+      for r in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; \
+        do echo "RemoteIPTrustedProxy $r"; done; \
+      echo '# Cloudflare IPv4 (https://www.cloudflare.com/ips-v4)'; \
+      for r in 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 \
+               141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 \
+               197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 \
+               104.24.0.0/14 172.64.0.0/13 131.0.72.0/22; \
+        do echo "RemoteIPTrustedProxy $r"; done; \
+      echo '# Cloudflare IPv6 (https://www.cloudflare.com/ips-v6)'; \
+      for r in 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 \
+               2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32; \
+        do echo "RemoteIPTrustedProxy $r"; done; \
+    } > /etc/apache2/conf-available/remoteip.conf \
  && a2enconf remoteip \
  && sed -ri 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
  && echo "date.timezone = Asia/Tokyo" > /usr/local/etc/php/conf.d/timezone.ini
