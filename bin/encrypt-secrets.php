@@ -13,7 +13,8 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 
 require_once __DIR__ . '/../src/core/db.php';
 
-$pdo = db();
+// db.php は $pdo をその場で定義する（db() のような取得関数は無い）。
+/** @var PDO $pdo */
 $keys = secretSettingKeys();
 
 if (secretKey() === null) {
