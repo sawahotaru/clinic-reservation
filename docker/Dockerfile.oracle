@@ -64,6 +64,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
         do echo "RemoteIPTrustedProxy $r"; done; \
     } > /etc/apache2/conf-available/remoteip.conf \
  && a2enconf remoteip \
+ && printf '%s\n' \
+      '# 版数・OS をエラーページと Server ヘッダーに出さない（公開物の安全方針）。' \
+      '# 既定の security.conf は ServerTokens OS / ServerSignature On で、' \
+      '# 存在しない .php の 404 に「Apache/2.x.y (Debian) Server at ...」が載っていた。' \
+      'ServerTokens Prod' \
+      'ServerSignature Off' \
+      'TraceEnable Off' \
+    > /etc/apache2/conf-available/zz-hide-version.conf \
+ && a2enconf zz-hide-version \
  && sed -ri 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
  && echo "date.timezone = Asia/Tokyo" > /usr/local/etc/php/conf.d/timezone.ini
 
