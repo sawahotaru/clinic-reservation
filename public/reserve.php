@@ -23,7 +23,7 @@ $phoneRequired = in_array($contactReq, ['phone', 'both'], true);
 $emailRequired = in_array($contactReq, ['email', 'both'], true);
 
 // 入力チェック（不正な日時で来たら入口へ戻す）
-if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !preg_match('/^\d{2}:\d{2}$/', $time)) {
+if (!valid_ymd($date) || !preg_match('/^\d{2}:\d{2}\z/', $time)) {
     header('Location: index.php');
     exit;
 }

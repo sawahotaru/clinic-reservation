@@ -5,6 +5,7 @@
 //   blocked_slots : 開いている日の中の1枠ふさぎ（time指定）。
 // ※ 枠計算で使う読み取り（dayOverride() / availableSlotsDetailed内のblocked参照）は
 //    slot service（functions.php）側に残す。ここは管理画面用の一覧取得と更新を担当。
+require_once __DIR__ . '/input.php';
 
 /** 特定日指定の一覧を日付順で返す。 */
 function allDayOverrides(PDO $pdo): array
@@ -15,7 +16,7 @@ function allDayOverrides(PDO $pdo): array
 /** 特定日を 'open'（例外営業）または 'closed'（休業）に指定（同じ日付は上書き）。不正日付は無視。 */
 function setDayOverride(PDO $pdo, string $date, string $status): void
 {
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+    if (!valid_ymd($date)) {
         return;
     }
     $status = $status === 'open' ? 'open' : 'closed';
@@ -24,9 +25,12 @@ function setDayOverride(PDO $pdo, string $date, string $status): void
     $up->execute([$date, $status]);
 }
 
-/** 特定日指定を解除。 */
+/** 特定日指定を解除。不正日付は無視。 */
 function unsetDayOverride(PDO $pdo, string $date): void
 {
+    if (!valid_ymd($date)) {
+        return;
+    }
     $stmt = $pdo->prepare('DELETE FROM day_overrides WHERE date = ?');
     $stmt->execute([$date]);
 }
@@ -40,7 +44,7 @@ function allBlockedSlots(PDO $pdo): array
 /** 指定日に複数の枠をふさぐ（重複は追加しない）。不正な日付/時刻はスキップ。 */
 function addBlockedSlots(PDO $pdo, string $date, array $times): void
 {
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+    if (!valid_ymd($date)) {
         return;
     }
     $dup = $pdo->prepare('SELECT COUNT(*) FROM blocked_slots WHERE date = ? AND time = ?');

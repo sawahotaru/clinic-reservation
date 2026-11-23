@@ -5,6 +5,9 @@ require_once __DIR__ . '/../src/core/input.php';   // ?id[]=x のような配列
 // htmlspecialchars() に配列を渡すと TypeError で Fatal になるため、必ず文字列化する。
 $id     = get_str('id');
 $date   = get_str('date');
+if (!valid_ymd($date)) {
+    $date = '';
+}
 $time   = get_str('time');
 $mailed = get_str('m')    === '1';
 $demo   = get_str('demo') === '1';

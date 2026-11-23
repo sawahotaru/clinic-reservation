@@ -21,7 +21,7 @@ if (isset($_GET['date'])) {
     //    JSON が壊れ、さらに header() を使う経路では "headers already sent" を誘発する。
     //    get_str() で配列を空文字に落とし、下の正規表現で 400 として弾く。
     $date = get_str('date');
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+    if (!valid_ymd($date)) {
         http_response_code(400);
         echo json_encode(['error' => 'bad date']);
         exit;
@@ -39,7 +39,7 @@ if (isset($_GET['date'])) {
 
 // --- 月単位: 各日の状態 ---
 $month = get_str('month', date('Y-m'));
-if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+if (!valid_ym($month)) {
     $month = date('Y-m');
 }
 $daysInMonth = (int)date('t', strtotime($month . '-01'));

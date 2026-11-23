@@ -101,6 +101,8 @@ jobs:
           expect /clinic-reservation/src/   403 "非公開ディレクトリの拒否"
           expect /clinic-reservation/data/  403 "データディレクトリの拒否"
           expect /clinic-reservation/admin/ 401 "管理画面のBasic認証"
+          expect "/clinic-reservation/api/availability.php?date=2026-01-01"    200 "日付の形式チェック（正常値）"
+          expect "/clinic-reservation/api/availability.php?date=2026-01-01%0A" 400 "日付の形式チェック（不正値）"
 
           echo "  PHP: $(docker exec clinic-ci php -v 2>&1 | head -1)"
           [ "$fail" -eq 0 ] || { echo "::error::公開範囲の検査に失敗（.htaccess/AllowOverride の設定を確認）"; exit 1; }

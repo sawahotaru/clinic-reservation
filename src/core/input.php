@@ -52,3 +52,27 @@ function req_str(string $key, string $default = ''): string
 {
     return str_param($_REQUEST[$key] ?? null, $default);
 }
+
+/**
+ * 'YYYY-MM-DD' 形式で、かつ暦の上に実在する日付なら true。
+ * 文字列全体が厳密にこの形式のときだけ通す（終端は \z で固定）。
+ */
+function valid_ymd(string $s): bool
+{
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})\z/', $s, $m)) {
+        return false;
+    }
+    return checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
+}
+
+/**
+ * 'YYYY-MM' 形式で、月が 01〜12 なら true。
+ * 文字列全体が厳密にこの形式のときだけ通す（終端は \z で固定）。
+ */
+function valid_ym(string $s): bool
+{
+    if (!preg_match('/^(\d{4})-(\d{2})\z/', $s, $m)) {
+        return false;
+    }
+    return checkdate((int)$m[2], 1, (int)$m[1]);
+}
