@@ -13,6 +13,6 @@ services:
       - ./bin:/var/www/html/bin
       # DBの実体を永続化（コンテナを消してもデータは残る）
       - ./data:/var/www/html/data
-    # お店の設定（店名・メール・管理パスワード）は src/config.php で行う。
+    # お店の設定（店名・メール・管理パスワード）は src/core/config.php で行う。
     # この .env / docker-compose は Docker の起動設定（ポート・PHPバージョン）専用。
     restart: unless-stopped

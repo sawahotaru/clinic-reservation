@@ -23,6 +23,13 @@ if (($_GET['logout'] ?? '') === '1') {
     exit;
 }
 
+// 認証の世代が変わっていたら（パスワードの再設定など）、このセッションのログイン状態を捨てる
+if ((!empty($_SESSION['admin']) || !empty($_SESSION['twofa_pending']))
+    && ($_SESSION['admin_epoch'] ?? null) !== adminSessionEpoch($pdo)) {
+    unset($_SESSION['admin'], $_SESSION['twofa_pending'], $_SESSION['admin_epoch'], $_SESSION['must_change_pw']);
+    session_rotate();
+}
+
 $loginError = '';
 
 // ロック中メッセージ（試行回数制限）を組み立てる
@@ -49,6 +56,10 @@ if (($_POST['action'] ?? '') === 'login') {
             // ⚠ 権限が上がる瞬間にセッションIDを打ち直す（session fixation 対策）。
             //    2段階目待ちの状態も「未ログインより強い状態」なので、ここでも回す。
             session_rotate();
+            $_SESSION['admin_epoch'] = adminSessionEpoch($pdo);
+            if (hash_equals(INITIAL_ADMIN_PASSWORD, $pass)) {
+                $_SESSION['must_change_pw'] = 1;   // 新しいパスワードを設定するまで管理画面を使わせない
+            }
             if (twofaEnabled($pdo)) {
                 $_SESSION['twofa_pending'] = 1;   // 2段階目待ち（まだ管理者にしない）
             } else {
@@ -154,6 +165,45 @@ if (empty($_SESSION['admin'])):
       ／
       <a href="reset_request.php?p=login">ログイン情報をリセット</a>
     </p>
+<?php page_foot(); ?>
+<?php
+    exit;
+endif;
+
+// ===== 新しいパスワードを設定するまでは、どの管理ページを開いてもこの画面を出す =====
+if (!isCustomAdmin($pdo) || !empty($_SESSION['must_change_pw'])):
+    $pwError = '';
+    if (($_POST['action'] ?? '') === 'force_setpw') {
+        $p1 = post_str('new_password');
+        $p2 = post_str('new_password2');
+        $pwError = newPasswordError($p1, $p2);
+        if ($pwError === '') {
+            setPassword($pdo, $p1);
+            revokeAdminAccess($pdo);                         // ほかの端末のログイン状態と未使用のリンクを無効にする
+            $_SESSION['admin_epoch'] = adminSessionEpoch($pdo); // この端末は続けて使えるようにする
+            unset($_SESSION['must_change_pw']);
+            session_rotate();
+            header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
+            exit;
+        }
+    }
+?>
+<?php page_head('パスワードの設定', '../'); ?>
+    <h1>パスワードの設定</h1>
+    <?php if ($pwError): ?><p class="error"><?= htmlspecialchars($pwError) ?></p><?php endif; ?>
+    <p class="hint">管理画面を使う前に、新しいパスワードを設定してください。</p>
+    <form method="post" class="reserve-form">
+      <?php csrf_field(); ?>
+      <input type="hidden" name="action" value="force_setpw">
+      <label>新しいパスワード（8文字以上）
+        <input type="password" name="new_password" required autocomplete="new-password">
+      </label>
+      <label>新しいパスワード（確認）
+        <input type="password" name="new_password2" required autocomplete="new-password">
+      </label>
+      <button type="submit">設定する</button>
+    </form>
+    <p class="auth-links"><a href="?logout=1">ログアウト</a></p>
 <?php page_foot(); ?>
 <?php
     exit;

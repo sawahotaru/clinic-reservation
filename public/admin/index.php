@@ -18,13 +18,6 @@ $navTitle  = '予約一覧';
 <?php page_head('予約一覧 | サンプル整体院', '../'); ?>
     <?php require __DIR__ . '/_nav.php'; ?>
 
-    <?php if (!isCustomAdmin($pdo)): ?>
-      <div class="warn">
-        ⚠️ 現在は<strong>初期設定のパスワード</strong>（ファイルに平文で記載）でログインしています。<br>
-        安全のため、<a href="account.php">アカウント</a>でログインID・パスワードを設定してください。
-      </div>
-    <?php endif; ?>
-
     <?php if (!$rows): ?>
       <p class="empty">予約はまだありません。</p>
     <?php else: ?>

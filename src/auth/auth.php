@@ -84,39 +84,74 @@ function verifyLogin(PDO $pdo, string $id, string $password): bool
     return hash_equals(INITIAL_ADMIN_PASSWORD, $password);
 }
 
-/** 初めてUI主導へ切り替える時、現在の実効値（＝ファイル値）をDBへ退避してから切替 */
-function startCustomAdmin(PDO $pdo): void
+/** 初めてUI主導へ切り替える。ID・メールはファイルの値を引き継ぎ、パスワードは新しい値で保存する。 */
+function startCustomAdmin(PDO $pdo, string $newPassword): void
 {
     if (isCustomAdmin($pdo)) return;
     authSet($pdo, 'admin_id', INITIAL_ADMIN_ID);
     authSet($pdo, 'admin_recovery_email', INITIAL_ADMIN_EMAIL);
-    authSet($pdo, 'admin_pass_hash', password_hash(INITIAL_ADMIN_PASSWORD, PASSWORD_DEFAULT));
+    authSet($pdo, 'admin_pass_hash', password_hash($newPassword, PASSWORD_DEFAULT));
     authSet($pdo, 'admin_pass_custom', '1');
 }
 
-// 管理画面/再設定でアカウントを変更すると「UI主導」に切り替わり、以降 config.php では上書きしない。
+// 新しいパスワードを設定すると「UI主導」に切り替わり、以降 config.php では上書きしない。
+// ログインID・再設定先メールの変更は、UI主導になってから受け付ける。
 function setPassword(PDO $pdo, string $newPassword): void
 {
-    startCustomAdmin($pdo);
+    if (hash_equals(INITIAL_ADMIN_PASSWORD, $newPassword)) {
+        throw new InvalidArgumentException('新しいパスワードは初期パスワードと別にしてください。');
+    }
+    startCustomAdmin($pdo, $newPassword);
     authSet($pdo, 'admin_pass_hash', password_hash($newPassword, PASSWORD_DEFAULT));
 }
-function setAdminId(PDO $pdo, string $id): void
+/** ログインIDを変更。UI主導のときだけ保存し、保存したら true。 */
+function setAdminId(PDO $pdo, string $id): bool
 {
-    startCustomAdmin($pdo);
+    if (!isCustomAdmin($pdo)) return false;
     authSet($pdo, 'admin_id', trim($id));
+    return true;
 }
-function setRecoveryEmail(PDO $pdo, string $email): void
+/** 再設定先メールを変更。UI主導のときだけ保存し、保存したら true。 */
+function setRecoveryEmail(PDO $pdo, string $email): bool
 {
-    startCustomAdmin($pdo);
+    if (!isCustomAdmin($pdo)) return false;
     authSet($pdo, 'admin_recovery_email', trim($email));
+    return true;
 }
 
-/** ログイン情報を初期値（config.php）に戻す＝ファイル主導へ戻す。2FAも解除（緊急復旧の抜け道）。 */
+/** 新しいパスワードの検査。問題が無ければ空文字、あれば利用者向けの文言を返す。 */
+function newPasswordError(string $p1, string $p2): string
+{
+    if (strlen($p1) < 8) return 'パスワードは8文字以上にしてください。';
+    if ($p1 !== $p2) return '確認用パスワードが一致しません。';
+    if (hash_equals(INITIAL_ADMIN_PASSWORD, $p1)) return '初期パスワードとは別のものを設定してください。';
+    return '';
+}
+
+/** 管理セッションの世代。これが変わると、それ以前のログイン状態は使えなくなる。 */
+function adminSessionEpoch(PDO $pdo): string
+{
+    return authGet($pdo, 'admin_session_epoch', '');
+}
+
+/** 既存の管理セッションと、未使用のリンク（トークン）をすべて無効にする。 */
+function revokeAdminAccess(PDO $pdo): void
+{
+    authSet($pdo, 'admin_session_epoch', bin2hex(random_bytes(16)));
+    $pdo->exec('UPDATE auth_tokens SET used = 1 WHERE used = 0');
+}
+
+/** ログイン情報を初期値（config.php）に戻す＝ファイル主導へ戻す。2FAも解除する（FORCE_INITIAL_ADMIN 用）。
+ *  状態が変わったときだけ、既存の管理セッションと未使用のリンクを無効にする。 */
 function resetLoginToInitial(PDO $pdo): void
 {
+    $changed = isCustomAdmin($pdo) || authGet($pdo, 'twofa_enabled', '0') === '1';
     authSet($pdo, 'admin_pass_custom', '0');
     // 端末/認証アプリを失っても FORCE_INITIAL_ADMIN で必ず入れるよう、2段階認証も無効化する
     authSet($pdo, 'twofa_enabled', '0');
+    if ($changed) {
+        revokeAdminAccess($pdo);
+    }
 }
 
 // ---- リセットトークン ----
@@ -168,8 +203,8 @@ function sendResetLink(PDO $pdo, string $purpose, string $url): array
 
     if ($purpose === 'login') {
         $subject = '【予約システム】ログイン情報のリセット';
-        $body = "ログイン情報を初期設定に戻すためのリンクです（1時間有効）。\n\n{$url}\n\n"
-              . "このリンクを開いて実行すると、ログインIDとパスワードがサーバー上の初期値に戻ります。\n"
+        $body = "ログイン情報をリセットするためのリンクです（1時間有効）。\n\n{$url}\n\n"
+              . "リンクを開くと、ログインIDの確認と新しいパスワードの設定ができます。\n"
               . "お心当たりがなければ、このメールは破棄してください。\n";
     } else {
         $subject = '【予約システム】パスワード再設定';

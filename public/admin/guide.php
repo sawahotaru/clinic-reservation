@@ -67,9 +67,10 @@ $navTitle  = '使い方ガイド';
     </ol>
 
     <div class="guide-note">
-      <strong>設置直後にやることは3つだけです。</strong>
+      <strong>設置直後にやることは4つだけです。</strong>
       <ol>
-        <li><a href="account.php">アカウント</a> でログインIDとパスワードをご自分のものに変える（→ <a href="#account">7章</a>）</li>
+        <li>最初のログインで出る画面で、<strong>新しいパスワード</strong>を決める（→ <a href="#account">7章</a>）</li>
+        <li><a href="account.php">アカウント</a> でログインIDをご自分のものに変える（→ <a href="#account">7章</a>）</li>
         <li><a href="slots.php">予約枠設定</a> で営業時間・定休日を実際のお店に合わせる（→ <a href="#slots">5章</a>）</li>
         <li><a href="mail.php">メール</a> で通知先のメールアドレスを入れる（→ <a href="#mail">6章</a>）</li>
       </ol>
@@ -332,6 +333,7 @@ $navTitle  = '使い方ガイド';
       <dd>
         ログイン画面の下にある <strong>「パスワードを忘れた方」</strong> から再設定できます。
         登録したメールアドレスに再設定用のリンクが届きます。
+        ログインIDも分からないときは <strong>「ログイン情報をリセット」</strong> から。届いたリンクを開くとログインIDが表示され、新しいパスワードを設定できます。
         何度か間違えると<strong>しばらく試せなくなります</strong>（不正なログインを防ぐためです）。数分待ってからお試しください。
       </dd>
 

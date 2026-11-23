@@ -12,14 +12,13 @@ if (($_POST['action'] ?? '') === 'account') {
     $recov = trim($_POST['recovery_email'] ?? '');
     $np1   = $_POST['new_password']  ?? '';
     $np2   = $_POST['new_password2'] ?? '';
-    if ($np1 !== '' && strlen($np1) < 8) {
-        $msg = 'パスワードは8文字以上にしてください。'; $msgType = 'error';
-    } elseif ($np1 !== '' && $np1 !== $np2) {
-        $msg = '確認用パスワードが一致しません。'; $msgType = 'error';
+    $pwErr = ($np1 !== '' || !isCustomAdmin($pdo)) ? newPasswordError($np1, $np2) : '';
+    if ($pwErr !== '') {
+        $msg = $pwErr; $msgType = 'error';
     } else {
+        if ($np1   !== '') setPassword($pdo, $np1);   // 先にパスワード（UI主導への切り替えはここで起きる）
         if ($newId !== '') setAdminId($pdo, $newId);
         if ($recov !== '') setRecoveryEmail($pdo, $recov);
-        if ($np1   !== '') setPassword($pdo, $np1);
         $msg = 'アカウント情報を更新しました。';
     }
 }
@@ -78,13 +77,6 @@ $navTitle  = '管理アカウント';
       <p class="<?= $msgType === 'error' ? 'error' : 'info' ?>"><?= htmlspecialchars($msg) ?></p>
     <?php endif; ?>
 
-    <?php if (!isCustomAdmin($pdo)): ?>
-      <div class="warn">
-        ⚠️ 現在は<strong>初期設定のパスワード</strong>（ファイルに平文で記載）でログインしています。
-        ここでログインID・パスワードを設定すると、暗号化して保存され安全になります。
-      </div>
-    <?php endif; ?>
-
     <form method="post" class="reserve-form">
       <?php csrf_field(); ?>
       <input type="hidden" name="action" value="account">
@@ -116,7 +108,7 @@ $navTitle  = '管理アカウント';
       <?php else: ?>
         <div class="field-group">
           <?= $pwFields ?>
-          <span class="hint">初期パスワードのままです。ここで設定すると暗号化して保存され安全になります（空欄なら変更しません）。</span>
+          <span class="hint">新しいパスワードを入力してください（必須）。</span>
         </div>
       <?php endif; ?>
       <button type="submit">アカウントを更新</button>
