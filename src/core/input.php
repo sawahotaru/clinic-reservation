@@ -76,3 +76,36 @@ function valid_ym(string $s): bool
     }
     return checkdate((int)$m[2], 1, (int)$m[1]);
 }
+
+/**
+ * UTF-8 の文字数が $max 以下なら true。UTF-8 として正しくない文字列は false。
+ */
+function str_within(string $s, int $max): bool
+{
+    return preg_match('/\A.{0,' . $max . '}\z/su', $s) === 1;
+}
+
+/**
+ * POST の送信元が、このサイト自身のページかを確かめる。
+ * Origin を見て、無ければ Referer を見る。どちらも無ければ true。
+ * 比べるのはホスト名とポートで、Host ヘッダーと一致すれば true。
+ * 既定のポート（80・443）は両方から除いて比べる。
+ */
+function post_from_same_site(array $server): bool
+{
+    $src = (string)($server['HTTP_ORIGIN'] ?? '');
+    if ($src === '') {
+        $src = (string)($server['HTTP_REFERER'] ?? '');
+    }
+    if ($src === '') {
+        return true;
+    }
+    $p = parse_url($src);
+    if (!is_array($p) || !isset($p['host']) || $p['host'] === '') {
+        return false;
+    }
+    $port = (isset($p['port']) && !in_array($p['port'], [80, 443], true)) ? ':' . $p['port'] : '';
+    $from = strtolower($p['host']) . $port;
+    $host = (string)preg_replace('/:(80|443)\z/', '', strtolower((string)($server['HTTP_HOST'] ?? '')));
+    return $host !== '' && $from === $host;
+}

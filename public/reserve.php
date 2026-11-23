@@ -6,6 +6,7 @@ require __DIR__ . '/../src/core/reservations.php';
 require __DIR__ . '/../src/mail/notify.php';
 require_once __DIR__ . '/../src/core/view.php';
 require_once __DIR__ . '/../src/core/input.php';   // ?date[]=1 のような配列注入を入口で潰す
+require_once __DIR__ . '/../src/core/reserve_limit.php';
 
 // ⚠ req_str() を通すのは必須。?date[]=1&time=10:00 だと $_REQUEST['date'] が配列になり、
 //    下の preg_match() が TypeError で Fatal になっていた（未認証で再現可能）。
@@ -13,6 +14,20 @@ require_once __DIR__ . '/../src/core/input.php';   // ?date[]=1 のような配�
 $date  = req_str('date');
 $time  = req_str('time');
 $error = '';
+
+// 送信元がこのサイトのページでない POST は受け付けない。
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !post_from_same_site($_SERVER)) {
+    http_response_code(403);
+    page_head('予約内容の入力 | サンプル整体院');
+    ?>
+    <h1>予約内容の入力</h1>
+    <p class="error">この画面からは予約を受け付けられませんでした。お手数ですが、最初からやり直してください。</p>
+    <p><a href="index.php">← トップへ戻る</a></p>
+<?php
+    page_foot();
+    exit;
+}
+$maxLen = ['name' => 50, 'phone' => 20, 'email' => 254];   // 入力の長さの上限（文字数）
 
 $cfg = slotConfig($pdo);
 
@@ -59,9 +74,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name  = trim(post_str('name'));
     $phone = trim(post_str('phone'));
     $email = trim(post_str('email'));
+    $ip    = (string)($_SERVER['REMOTE_ADDR'] ?? '');
 
     if ($name === '') {
         $error = 'お名前を入力してください。';
+    } elseif (!str_within($name, $maxLen['name'])) {
+        $error = 'お名前は' . $maxLen['name'] . '文字以内で入力してください。';
+    } elseif (!str_within($phone, $maxLen['phone'])) {
+        $error = '電話番号は' . $maxLen['phone'] . '文字以内で入力してください。';
+    } elseif (!str_within($email, $maxLen['email'])) {
+        $error = 'メールアドレスは' . $maxLen['email'] . '文字以内で入力してください。';
     } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = 'メールアドレスの形式が正しくありません。';
     } elseif ($phoneRequired && $phone === '') {
@@ -70,6 +92,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'メールアドレスを入力してください。';
     } elseif ($contactReq === 'either' && $phone === '' && $email === '') {
         $error = '電話番号またはメールアドレスのどちらかを入力してください。';
+    } elseif (($limit = reserveLimitReason($pdo, $ip, $phone, $email)) !== '') {
+        if ($limit === 'total') {
+            http_response_code(429);
+            $error = 'ただいまWeb予約の受付を一時停止しています。お電話でご予約ください。';
+            try {
+                if (reserveAlertDue($pdo)) {
+                    sendReserveStopNotice($pdo);
+                }
+            } catch (PDOException $e) {
+                // 知らせの失敗は応答に影響させない
+            }
+        } elseif ($limit === 'ip') {
+            http_response_code(429);
+            $error = '短時間に多くのご予約があったため、受付を一時的に止めています。時間をおいてお試しいただくか、お電話でご予約ください。';
+        } elseif ($limit === 'contact') {
+            $error = '同じ連絡先でお取りいただけるご予約は' . RESERVE_LIMIT_PER_CONTACT . '件までです。追加のご予約はお電話でご相談ください。';
+        } else {
+            $error = '申し訳ありません。エラーが発生しました。時間をおいて再度お試しください。';
+        }
     } else {
         try {
             // capacity を尊重した二重予約防止つきで作成（満席なら null）。
@@ -81,15 +122,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id === null) {
                 $error = '申し訳ありません。その枠はすでに満席です。別の時間をお選びください。';
             } else {
+                $mailCustomer = false;
+                try {
+                    reserveRecord($pdo, 'reserve', reserveIpKey($ip));
+                    $mailCustomer = $email !== '' && reserveMailAllowed($pdo, $email);
+                    if ($mailCustomer) {
+                        reserveRecord($pdo, 'mail', reserveKey($email));
+                    }
+                } catch (PDOException $e) {
+                    $mailCustomer = false;
+                }
+
                 // 通知メール（お客さん控え＋お店通知）。送信に失敗しても予約は確定済み。
                 sendReservationMails($pdo, [
                     'id' => $id, 'date' => $date, 'time' => $time,
                     'name' => $name, 'phone' => $phone, 'email' => $email,
+                    'notify_customer' => $mailCustomer,
                 ]);
 
-                // 完了画面へ（予約番号付き。メールを入れた場合は m=1。デモモードは demo=1）
+                // 完了画面へ（予約番号付き。確認メールを送った場合は m=1。デモモードは demo=1）
                 $url = 'complete.php?id=' . $id . '&date=' . urlencode($date) . '&time=' . urlencode($time);
-                if ($email !== '') {
+                if ($mailCustomer) {
                     $url .= '&m=1';
                 }
                 if (isDemoMode($settings)) {
@@ -120,18 +173,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <input type="hidden" name="time" value="<?= htmlspecialchars($time) ?>">
 
       <label>お名前
-        <input type="text" name="name" required
+        <input type="text" name="name" maxlength="<?= $maxLen['name'] ?>" required
                value="<?= htmlspecialchars(post_str('name')) ?>">
       </label>
       <?php if ($contactReq === 'either'): ?>
         <p class="hint">電話番号またはメールアドレスの<strong>どちらか一方は必ず</strong>ご入力ください。</p>
       <?php endif; ?>
       <label>電話番号<?= (!$phoneRequired && $contactReq !== 'either') ? '（任意）' : '' ?>
-        <input type="tel" name="phone" <?= $phoneRequired ? 'required' : '' ?>
+        <input type="tel" name="phone" maxlength="<?= $maxLen['phone'] ?>" <?= $phoneRequired ? 'required' : '' ?>
                value="<?= htmlspecialchars(post_str('phone')) ?>">
       </label>
       <label>メールアドレス<?= (!$emailRequired && $contactReq !== 'either') ? '（任意）' : '' ?>
-        <input type="email" name="email" <?= $emailRequired ? 'required' : '' ?>
+        <input type="email" name="email" maxlength="<?= $maxLen['email'] ?>" <?= $emailRequired ? 'required' : '' ?>
                placeholder="入力すると確認メールが届きます"
                value="<?= htmlspecialchars(post_str('email')) ?>">
       </label>

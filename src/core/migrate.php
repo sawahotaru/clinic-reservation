@@ -96,6 +96,19 @@ function migrationSteps(): array
                 result         TEXT
             )');
         },
+
+        // --- 4: 公開予約の受付記録 ---
+        // 受付件数と確認メールの通数を数えるための記録（src/core/reserve_limit.php）。
+        // 古い行は記録のたびに消すので、行数は一定の範囲に収まる。
+        4 => function (PDO $pdo): void {
+            $pdo->exec('CREATE TABLE IF NOT EXISTS reserve_events (
+                id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT    NOT NULL,   -- reserve | mail | alert
+                k    TEXT    NOT NULL,   -- 数えるキー（ハッシュ値）。alert は空文字
+                at   INTEGER NOT NULL    -- 記録した時刻（Unix 秒）
+            )');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_reserve_events_kind_k_at ON reserve_events(kind, k, at)');
+        },
     ];
 }
 

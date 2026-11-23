@@ -9,8 +9,25 @@ require_once __DIR__ . '/../core/logfile.php';   // mail.log のサイズ上限�
 // 送信内容と結果は data/mail.log に記録する。送信失敗で予約処理は止めない。
 
 /**
+ * お客さん宛の控え。[件名, 本文] を返す。本文は定型で、予約番号・日時・店名だけを入れる。
+ */
+function customerConfirmMessage(string $shop, string $id, string $date, string $time): array
+{
+    $subject = "【{$shop}】ご予約を承りました";
+    $body =
+        "この度はご予約ありがとうございます。\n以下の内容で承りました。\n\n" .
+        "──────────\n" .
+        "予約番号 : {$id}\n日時　　 : {$date} {$time}\n" .
+        "──────────\n\n" .
+        "ご来店をお待ちしております。\n" .
+        "※このメールは送信専用です。ご変更・キャンセルはお電話でお願いいたします。\n" .
+        "※お心当たりのない場合は、お手数ですがお電話でお知らせください。\n\n{$shop}\n";
+    return [$subject, $body];
+}
+
+/**
  * 予約確定時の通知。お客さん控え（メール入力時）とお店通知（notify_email設定時）。
- * @param array $r ['id','date','time','name','phone','email']
+ * @param array $r ['id','date','time','name','phone','email','notify_customer']
  */
 function sendReservationMails(PDO $pdo, array $r): void
 {
@@ -19,17 +36,8 @@ function sendReservationMails(PDO $pdo, array $r): void
     $when = "{$r['date']} {$r['time']}";
 
     // お客さん宛：控え
-    if (!empty($r['email'])) {
-        $subject = "【{$shop}】ご予約を承りました";
-        $body =
-            "{$r['name']} 様\n\n" .
-            "この度はご予約ありがとうございます。\n以下の内容で承りました。\n\n" .
-            "──────────\n" .
-            "予約番号 : {$r['id']}\n日時　　 : {$when}\n" .
-            "お名前　 : {$r['name']} 様\nお電話　 : {$r['phone']}\n" .
-            "──────────\n\n" .
-            "ご来店をお待ちしております。\n" .
-            "※このメールは送信専用です。ご変更・キャンセルはお電話でお願いいたします。\n\n{$shop}\n";
+    if (!empty($r['email']) && !empty($r['notify_customer'])) {
+        [$subject, $body] = customerConfirmMessage($shop, (string)$r['id'], $r['date'], $r['time']);
         sendMail($s, $r['email'], $subject, $body, null, 'customer');
     }
 
@@ -155,4 +163,28 @@ function sendViaGmail(array $s, string $to, string $subject, string $body, ?stri
     } catch (\Throwable $e) {
         return [false, $mail->ErrorInfo ?: $e->getMessage()];
     }
+}
+
+/** 受付停止の知らせ。[件名, 本文] を返す */
+function reserveStopNoticeMessage(string $shop, string $at): array
+{
+    $subject = "【{$shop}】Web予約の受付を一時停止しました";
+    $body =
+        "直近の予約件数が上限に達したため、Web予約の受付を一時停止しています。\n" .
+        "件数が上限を下回ると、受付は自動で再開します。\n" .
+        "管理画面の予約一覧をご確認ください。\n\n" .
+        "発生日時 : {$at}\n";
+    return [$subject, $body];
+}
+
+/** Web 予約の受付を一時停止したことを、お店に知らせる。通知先が未設定なら送らずに false */
+function sendReserveStopNotice(PDO $pdo): bool
+{
+    $s = getSettings($pdo);
+    if (empty($s['notify_email'])) {
+        return false;
+    }
+    [$subject, $body] = reserveStopNoticeMessage($s['shop_name'], date('Y-m-d H:i'));
+    sendMail($s, $s['notify_email'], $subject, $body, null, 'alert');
+    return true;
 }
