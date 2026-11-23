@@ -76,7 +76,7 @@ COPY data/holidays.csv /opt/seed/holidays.csv
 RUN bash ./scripts/fetch-phpmailer.sh
 
 # 非公開ディレクトリ拒否 + 管理画面スラッグ移設 + includeパス正規化（deploy.yml の Arrange 相当）
-RUN set -eux; \
+RUN set -eu; \
     printf 'Require all denied\n' > src/.htaccess; \
     mkdir -p data; printf 'Require all denied\n' > data/.htaccess; \
     SLUG="${ADMIN_SLUG}"; \
@@ -92,7 +92,7 @@ RUN set -eux; \
     printf 'AuthType Basic\nAuthName "Clinic Admin (staff only)"\nAuthUserFile /var/www/html/clinic-reservation/data/.htpasswd\nRequire valid-user\n' > "$ADMIN_DIR/.htaccess"; \
     find . -name '*.php' -not -path './src/*' -print0 | xargs -0 -r sed -i 's#/\.\./src/#/src/#g'; \
     rm -rf ./scripts; \
-    echo "clinic arranged (admin dir: $ADMIN_DIR)"
+    echo "clinic arranged"
 
 # リマインダーのCLI。⚠ 上の Arrange より**後**に置くこと。
 # Arrange の include パス正規化（'/../src/' → '/src/'）が bin/*.php にも当たってしまい、
