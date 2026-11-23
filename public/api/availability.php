@@ -4,6 +4,7 @@
 //                         free=空きあり / full=空きなし(満・受付不可) / closed=休診 / out=予約可能期間外
 //                         （過去日は返さない＝カレンダー側で無効表示）
 //   ?date=YYYY-MM-DD    … その日の枠を返す { date, capacity, closed, slots:[{time,remaining}] }
+define('HONEYPOT_SHIELD_SKIP', true);   // 予約の受付ページはブロック判定の対象外（db.php 参照）
 require __DIR__ . '/../../src/core/db.php';
 require __DIR__ . '/../../src/core/functions.php';
 require_once __DIR__ . '/../../src/core/input.php';   // ?date[]=x のような配列注入を入口で潰す

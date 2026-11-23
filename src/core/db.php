@@ -3,8 +3,11 @@
 // DBファイルは公開フォルダ(public)の外に置き、URLから直接ダウンロードされないようにする。
 
 // ハニーポットで自動ブロック済みのIPは、DB接続する前にここで弾く（軽量・最優先）。
+// 入口で HONEYPOT_SHIELD_SKIP を定義したページ（予約の受付）では弾かない。
 require_once __DIR__ . '/honeypot.php';
-honeypot_shield();
+if (!defined('HONEYPOT_SHIELD_SKIP')) {
+    honeypot_shield();
+}
 
 date_default_timezone_set('Asia/Tokyo');
 

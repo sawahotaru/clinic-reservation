@@ -1,4 +1,5 @@
 <?php
+define('HONEYPOT_SHIELD_SKIP', true);   // 予約の受付ページはブロック判定の対象外（db.php 参照）
 require __DIR__ . '/../src/core/db.php';
 require __DIR__ . '/../src/core/functions.php';
 require __DIR__ . '/../src/core/reservations.php';
