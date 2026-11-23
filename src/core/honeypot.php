@@ -64,8 +64,7 @@ function honeypot_read_json(string $path): array
 //
 // ⚠ ここに載る値は**すべて攻撃者が長さを決められる**。
 //    uri は URL、ua / xff はリクエストヘッダで、Apache の LimitRequestFieldSize
-//    （既定 8190 バイト）いっぱいまで送れる。無加工で書いていた頃は
-//    1リクエストで約 16KB のログ行を作れた＝ログ自体が DoS の道具だった。
+//    （既定 8190 バイト）いっぱいまで送れる。
 //    log_clip() で 1 項目ずつ上限を掛け、log_append() でファイル全体にも上限を掛ける。
 function honeypot_log(string $label, array $extra = []): void
 {
@@ -175,11 +174,8 @@ function honeypot_captured_creds(): array
 
 // 罠の本体。デコイ用スタブから呼ぶ。記録 → 昇格 → それっぽい偽レスポンス → 終了。
 //
-// ⚠ 最初に honeypot_shield() を通すこと。デコイ（/wp-login.php 等）はこれまで
-//    shield を呼んでいなかったため、**ブロック済みIPでも罠だけは何度でも叩けた**。
-//    1回叩くたびにログが1行伸びるので、ブロックしたはずの相手が
-//    そのままログを太らせ続けられる状態だった（本物のページは 403 なのに罠は開いている）。
-//    ここで弾けばデコイも本物と同じ扱いになり、1箇所の修正で全デコイに効く。
+// ⚠ 最初に honeypot_shield() を通すこと。ブロック中の IP は罠でも 403 にし、
+//    ログも伸ばさない。ここで弾くので、すべてのデコイに同じ扱いが効く。
 function honeypot_trap(string $label): void
 {
     honeypot_shield();

@@ -1,5 +1,5 @@
 #!/bin/sh
-# clinic-reservation (Oracle/本番) の起動前処理:
+# clinic-reservation（本番用イメージ）の起動前処理:
 #  - data/ ボリュームを Apache 実行ユーザー(www-data)所有にする（SQLite書込のため）
 #  - .htpasswd は 644 でないと Apache(group www)が読めず 500 になるため強制
 #  - holidays.csv が未配置なら初期シードを置く
@@ -10,11 +10,9 @@ DATA="$APP/data"
 mkdir -p "$DATA"
 
 # ⚠ data/ の拒否は**起動時に書く**こと。ビルド時（Dockerfile.oracle）にも置いているが、
-#    compose の bind マウント（./clinic-data:…/data）がディレクトリごと覆い隠すため、
+#    実行時に data/ へマウントするボリュームがディレクトリごと覆い隠すため、
 #    イメージ内の .htaccess は実行時には存在しない。
-#    2026-10-22、これが原因で data/ が全世界に公開されており、予約DB(database.sqlite)が
-#    認証なしで取得できる状態だった。data/ は docroot の内側にあるので .htaccess が唯一の防壁。
-#    （経路側の Caddy でも /clinic-reservation/data/* を 404 にしている。二重化は意図的）
+#    data/ は docroot の内側にあるので、ここで必ず拒否を書く。
 echo "Require all denied" > "$DATA/.htaccess"
 chmod 644 "$DATA/.htaccess"
 
@@ -29,22 +27,19 @@ chown -R www-data:www-data "$DATA" 2>/dev/null || true
 
 # ---- 来院前リマインダーの定期実行 -------------------------------------------
 # 【なぜ要るか】
-# これまで本番には定期実行が無く、公開ページへのアクセス契機（remindersTick）だけで
-# 送られていた。実際には uptime 監視が15分ごとに `/clinic-reservation/` を叩くので
-# 動いてはいたが、それは**監視の副作用**であって、監視を止めたら通知も止まる。
-# 依存してよい関係ではない。
+# 公開ページへのアクセス契機（remindersTick）だけに頼ると、アクセスが無い間は
+# 通知も止まる。アクセスの有無に左右されないよう、定期実行をここで回す。
 #
 # 【なぜ専用コンテナや host cron ではないか】
-#  - 専用コンテナ: 同じイメージ・同じボリュームが要るうえ、スコープデプロイ
-#    （`up -d --build clinic`）は clinic しか作り直さないので、片方だけ古い版で
-#    動き続ける状態を作りやすい。1VM(1GB) にサービスを1つ増やす価値もない。
+#  - 専用コンテナ: 同じイメージ・同じボリュームが要るうえ、片方だけを作り直すと
+#    古い版のまま動き続ける状態を作りやすい。
 #  - host cron: git に残らず、デプロイでも管理されない。再構築時に必ず忘れる。
 #  - docker socket を渡す方式: 通知1つのためにコンテナ脱出の足場を置くことになる。
 # → イメージの中に閉じるのが、この構成では一番壊れにくい。
 #
 # 【www-data で実行する理由】
 # root で回すと data/ 配下のファイルが root 所有になり、以後 Web 側が書けなくなる。
-# しかも書き込みは @ 抑制なので**無言で失敗する**（B3 の検証時に実際に踏んだ）。
+# しかも書き込みは @ 抑制なので**無言で失敗する**。
 SWEEP="${REMINDER_SWEEP_SECONDS:-600}"
 case "$SWEEP" in
   ''|*[!0-9]*) SWEEP=0 ;;   # 数値でなければ無効扱い（誤設定で毎秒回るより、止まるほうがまし）

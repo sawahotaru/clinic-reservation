@@ -46,7 +46,7 @@
 |---|---|
 | 言語 | PHP 8 系（フレームワーク不使用・素のPHP） |
 | データベース | SQLite（`pdo_sqlite`） |
-| Webサーバー | Apache（開発は公式 `php:8.4-apache`） |
+| Webサーバー | Apache（公式 PHP イメージの Apache 版） |
 | 開発環境 | Docker / docker compose |
 | メール（SMTP） | PHPMailer（LGPL-2.1・取得スクリプトで導入。リポジトリには含めない） |
 
@@ -181,7 +181,7 @@ GitHub Actions でデプロイする場合、リポジトリの Secret **`ADMIN_
 
 - **CSRF トークン**: 管理画面の状態を変える POST は**すべて**ワンセッション1本のトークンを要求します。検査は `src/auth/admin_guard.php` の1箇所（全管理ページがここを通る）で行うので、画面を追加しても付け忘れが起きません。未ログインで開く `reset.php` / `reset_request.php` は自前で `csrf_require()` を呼びます。
   - ⚠️ **Basic 認証は CSRF の防壁になりません。** ブラウザが自動で資格情報を付けるため、罠サイトからの POST にも同伴します。別レイヤの対策が要ります。
-- **Cookie 属性**: `HttpOnly` ／ `SameSite=Lax` ／ HTTPS のときだけ `Secure`（ローカルは HTTP なので自動で外れる）。パスは管理ディレクトリ配下に限定し、同じホストの他アプリへ送られないようにしています。HTTPS かどうかは前段が付ける `X-Forwarded-Proto` で判定します。
+- **Cookie 属性**: `HttpOnly` ／ `SameSite=Lax` ／ HTTPS のときだけ `Secure`（ローカルは HTTP なので自動で外れる）。パスは管理ディレクトリ配下に限定しています。HTTPS かどうかは前段が付ける `X-Forwarded-Proto` で判定します。
 - **セッションID の打ち直し**: パスワード認証を通った時と2段階認証を通った時の**両方**で `session_regenerate_id(true)`（session fixation 対策）。ログアウトは `$_SESSION` のクリア・Cookie の失効・`session_destroy()` の3点セット。
 
 ### 🧾 エラー表示とログ
@@ -198,13 +198,13 @@ GitHub Actions でデプロイする場合、リポジトリの Secret **`ADMIN_
 
 不要なら `public/` からデコイのファイル／ディレクトリを削除するだけで無効化できます（本体の動作には影響しません）。
 
-> ⚠️ **自動ブロックは送信元IPが正しく取れていることが前提**です。本番は Cloudflare → Caddy → Apache の3段なので、`docker/Dockerfile.oracle` の `RemoteIPTrustedProxy` に **Cloudflare のレンジまで**登録して、`REMOTE_ADDR` を実クライアントIPに戻しています。ここが抜けていると `REMOTE_ADDR` が「毎回変わる Cloudflare エッジIP」になり、デコイの自動ブロックもログインの試行回数制限も**静かに効かなくなります**（逆に当たった場合は、その PoP を通る利用者が巻き添えで 403 になります）。一覧は `oracle-lab` の `Caddyfile` の `trusted_proxies` と同じもので、**更新するときは両方同時に**直してください。
+> ⚠️ **自動ブロックは送信元IPが正しく取れていることが前提**です。前段にリバースプロキシを置く構成では、`docker/Dockerfile.oracle` の `RemoteIPTrustedProxy` に前段のアドレス範囲を登録して、`REMOTE_ADDR` を実クライアントIPに戻しています。前段の構成を変えるときは、この一覧も合わせて直してください。
 
 ### 📤 ファイルアップロードは受け付けません（前段で 415）
 
-このアプリは**受信アップロードを一切持ちません**（`$_FILES` / `move_uploaded_file` / `enctype` を使っていません）。そのため本番（lab）では**前段のリバースプロキシ（Caddy）が `multipart/form-data` のリクエストを丸ごと `415 Unsupported Media Type` で落とします**。加えて `docker/hardening.ini` で `file_uploads = Off` にしています（※こちらはファイル保存を抑止するだけで、PHP の multipart パーサ自体は動きます）。
+このアプリは**受信アップロードを一切持ちません**（`$_FILES` / `move_uploaded_file` / `enctype` を使っていません）。そのため公開デモでは**前段のリバースプロキシが `multipart/form-data` のリクエストを `415 Unsupported Media Type` で落とします**。加えて `docker/hardening.ini` で `file_uploads = Off` にしています（※こちらはファイル保存を抑止するだけで、PHP の multipart パーサ自体は動きます）。
 
-⚠️ **将来アップロード機能を足す場合**は、アプリ側だけ直しても動きません。前段の設定（lab 環境では `oracle-lab` リポジトリの `Caddyfile` の `@multipart`）と `docker/hardening.ini` を**同時に**直す必要があります。直し忘れると、本番では原因不明の **415**、clinic 単体の Docker では **`$_FILES` が黙って空**という、環境ごとに違う症状になります。
+⚠️ **将来アップロード機能を足す場合**は、アプリ側だけ直しても動きません。前段の設定と `docker/hardening.ini` を**同時に**直す必要があります。直し忘れると、本番では原因不明の **415**、clinic 単体の Docker では **`$_FILES` が黙って空**という、環境ごとに違う症状になります。
 
 ---
 
@@ -248,10 +248,9 @@ docker compose exec -T -u www-data web php /var/www/html/bin/send-reminders.php 
 
 > ⚠️ アクセス契機だけに頼ると、**アクセスが無い時間帯は送信も止まります**。定期実行を用意できるなら cron を使ってください。
 >
-> 📌 **本番イメージに定期実行を内蔵した理由。** 以前はアクセス契機だけで、実際には死活監視が15分ごとに
-> トップページを叩くので動いてはいました。ただしそれは**監視の副作用**で、監視を止めれば通知も止まります。
-> 専用コンテナや host cron ではなくイメージの中に閉じたのは、前者はスコープデプロイ（`up -d --build clinic`）で
-> 片方だけ古い版のまま残りやすく、後者は git に残らず再構築時に必ず忘れるからです。
+> 📌 **本番イメージに定期実行を内蔵した理由。** アクセス契機だけでは、アクセスが無い間は通知も止まります。
+> 専用コンテナや host cron ではなくイメージの中に閉じたのは、前者は片方だけを作り直すと古い版のまま残りやすく、
+> 後者は git に残らず再構築時に必ず忘れるからです。
 > 定期実行は `--quiet` で回すので、**送るものが無い間はログに何も出ません**（10分おきの「対象0件」で
 > 本当に見たい失敗行が埋もれないように）。
 >

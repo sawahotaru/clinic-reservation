@@ -3,10 +3,8 @@
 // PHP のスーパーグローバルは「文字列が来る」保証がない。?date[]=x のように
 // 角括弧を付けるだけで $_GET['date'] は **配列** になる。
 // その配列を preg_match() / trim() / htmlspecialchars() に渡すと PHP 8 では
-// TypeError（Fatal error）になり、
-//   - display_errors が On ならスタックトレースと絶対パスが外部に出る
-//   - 出力が始まるので後続の header() が効かず、リダイレクトで守っている経路が壊れる
-// という二重の事故になる。実際 /index.php?date[]=x で再現していた。
+// TypeError（Fatal error）になり、出力が始まって後続の header() が効かなくなる
+// （リダイレクトで戻す処理が働かない）。
 //
 // 根本的な対策は「ini でエラーを隠す」ことではなく、**入口で型を確定させる**こと。
 // ini 側（docker/hardening.ini）の display_errors=Off は、ここを漏れた場合の保険。

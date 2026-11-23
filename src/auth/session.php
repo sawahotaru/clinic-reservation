@@ -2,28 +2,16 @@
 // ===== セッションと CSRF トークン =====
 // 管理画面のセッションは、ここを通してしか開始しない。
 //
-// 【なぜ必要だったか】
-//  1. Cookie 属性が PHP の既定のまま（HttpOnly=0 / Secure=0 / SameSite 未指定）だった。
-//     - HttpOnly が無い      … XSS が1つ出た瞬間にセッションIDを JS で抜ける
-//     - Secure が無い        … http に降格させられた経路で平文のまま飛ぶ
-//     - SameSite 未指定      … Chrome は Lax 相当に倒すが、**Firefox は倒さない**。
-//                              「最近のブラウザが守ってくれる」は環境依存の思い込みで、
-//                              Firefox の管理者に対しては CSRF がそのまま成立する。
-//  2. CSRF トークンがどこにも無かった（grep -i csrf が0件）。管理画面の
-//     予約キャンセル・休業登録/解除・営業設定・メール設定保存/テスト送信、
-//     そして **ID/パスワード変更・2段階認証の無効化** まで素の POST だった。
-//     前段の Basic 認証は「ブラウザが自動で付ける」ので CSRF の防壁にならない。
-//     管理者がログイン中に罠ページを踏むだけで、パスワードを攻撃者の値に
-//     書き換えられる（＝アカウント乗っ取り）状態だった。
-//  3. session_regenerate_id() が一度も呼ばれていなかった。
-//     「未ログイン → パスワード認証通過 → 2FA 通過 → 管理者」と権限が上がるのに
-//     セッションIDが最初から最後まで同じ。事前に ID を固定できれば、
-//     攻撃者は管理者になった後のセッションをそのまま使える（session fixation）。
-//     ※ php.ini 側の session.use_strict_mode=1（docker/hardening.ini）は
-//       「サーバが知らない ID を受け入れない」対策で、権限昇格時の
-//       ID 付け替えとは別物。両方必要。
-//  4. ログアウトが session_destroy() だけで、$_SESSION のクリアも
-//     Cookie の削除もしていなかった。
+// 【この層でしていること】
+//  1. Cookie 属性を明示する（HttpOnly・SameSite=Lax・HTTPS のときだけ Secure）。
+//     SameSite の既定の扱いはブラウザによって違うので、既定に頼らない。
+//  2. 管理画面の状態を変える POST には CSRF トークンを要求する
+//     （ID/パスワード変更・2段階認証の無効化を含む）。
+//     Basic 認証の資格情報はブラウザが自動で付けるので、CSRF の防壁にはならない。
+//  3. 権限が上がるとき（パスワード認証の通過・2段階認証の通過）にセッションIDを
+//     打ち直す（session fixation 対策）。
+//     ※ session.use_strict_mode=1（docker/hardening.ini）とは別の対策で、両方必要。
+//  4. ログアウトでは $_SESSION のクリア・Cookie の削除・session_destroy() を行う。
 //
 // 外部依存なし。レンタルサーバーへ持って行ってもそのまま動く。
 
@@ -35,10 +23,10 @@ define('SESSION_GUARD_LOADED', true);
 /**
  * この接続が（利用者から見て）HTTPS か。
  *
- * 本番は Cloudflare → Caddy → Apache の順で、Apache 自身は平文の HTTP で
+ * 前段のリバースプロキシで TLS を終端する構成では、Apache 自身は平文の HTTP で
  * 受けるため $_SERVER['HTTPS'] は立たない。前段が付ける X-Forwarded-Proto を見る。
  *
- * ⚠ 「XFP を信じて大丈夫か」: Caddy / Cloudflare は自分が終端したスキームで
+ * ⚠ 「XFP を信じて大丈夫か」: 前段は自分が終端したスキームで
  *    このヘッダを上書きするので、クライアントが偽の値を混ぜても届かない。
  *    仮に直結で https と詐称されても、起きるのは「自分の Cookie に Secure が
  *    付いて自分に届かなくなる」だけで、こちらが損をする方向には倒れない。
@@ -70,8 +58,7 @@ function session_boot(): void
     }
 
     // Cookie のスコープはこのディレクトリ（管理画面）配下に限定する。
-    // lab.4510.be は /ec/ 等と同じホストを共有しているので、'/' にすると
-    // 無関係なアプリにも管理セッションの Cookie が送られてしまう。
+    // '/' にすると、同じホストの別のパスにも管理セッションの Cookie が送られる。
     $dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
     $path = rtrim($dir, '/') . '/';
 

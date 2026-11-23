@@ -7,7 +7,7 @@ require_once __DIR__ . '/../src/core/input.php';   // ?date[]=x のような配�
 
 // 日付を取得（未指定なら今日）。YYYY-MM-DD 以外は弾く。
 // ⚠ get_str() を通すのは必須。?date[]=x だと $_GET['date'] が配列になり、
-//    preg_match() の第2引数が配列＝TypeError で Fatal になっていた（未認証で再現可能）。
+//    preg_match() の第2引数が配列＝TypeError で Fatal になる。
 $date = get_str('date', date('Y-m-d'));
 if (!valid_ymd($date)) {
     $date = date('Y-m-d');

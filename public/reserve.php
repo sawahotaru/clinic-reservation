@@ -9,7 +9,7 @@ require_once __DIR__ . '/../src/core/input.php';   // ?date[]=1 のような配�
 require_once __DIR__ . '/../src/core/reserve_limit.php';
 
 // ⚠ req_str() を通すのは必須。?date[]=1&time=10:00 だと $_REQUEST['date'] が配列になり、
-//    下の preg_match() が TypeError で Fatal になっていた（未認証で再現可能）。
+//    下の preg_match() が TypeError で Fatal になる。
 //    配列で来たら空文字扱い＝「不正な日時」として index.php へ戻る、が正しい挙動。
 $date  = req_str('date');
 $time  = req_str('time');

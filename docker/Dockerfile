@@ -1,7 +1,7 @@
 # PHPのバージョンは docker-compose 経由で .env から渡される（既定 8.4）
 # ⚠ FROM は変数展開せず**リテラルで書く**こと。Dependabot は FROM の変数を解釈できず、
-#   ARG 経由だと docker の更新PRが一本も来ない（2026-07-29 に実測して判明。同設定の
-#   oracle-lab はリテラル記法なので3本届いていた）。PHP_VERSION は compose 側でも
+#   ARG 経由だと docker の更新PRが一本も来ない（実測済み。リテラル記法なら
+#   届く）。PHP_VERSION は compose 側でも
 #   8.4 固定で、変数にしている実益が無かったため撤去した。
 FROM php:8.5-apache
 
